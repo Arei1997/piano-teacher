@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/.venv/
+backend/.env
+backend/*.db
+
+# Node
+node_modules/
+frontend/dist/
+
+# Local tooling
+.vscode/
+.idea/
+.DS_Store
