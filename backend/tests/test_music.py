@@ -7,6 +7,7 @@ from music21 import chord, corpus, meter, note, stream, tempo
 from src.schemas.arrangement import ArrangedEvent, ArrangedMeasure, Arrangement
 from src.schemas.song import Measure, NoteEvent, SongMeta
 from src.services.arrangement import arrangement_to_notes, describe_duration, format_measures, locate
+from src.services import music
 from src.services.music import MusicError, build_musicxml, normalize_pitch, parse_file
 
 
@@ -59,6 +60,30 @@ def test_pickup_bar_is_kept_in_measure_positions():
     assert (measures[1].number, measures[1].start) == (1, 0.5)
     assert locate(0.75, measures, meta.time_signature) == (1, 0.25)
     assert {n.hand for n in notes} == {"R", "L"}
+
+
+def test_triplets_are_engraved_exactly():
+    # Bar 3 of a blues lead sheet: a 16th-note triplet (written as 0.1667) over a held chord.
+    notes = [ev("C5", 0, 0.5, "R"), ev("A4", 0, 0.5, "R")]
+    notes += [ev(p, 0.5 + i * 0.1667, 0.1667, "R") for i, p in enumerate(["G4", "A4", "G4"])]
+    notes += [ev("E4", 1, 1, "R"), ev("A2", 0, 2, "L"), ev("E3", 0, 2, "L"), ev("F#3", 2, 2, "L"), ev("D3", 2, 2, "L")]
+    xml, measures = build_musicxml(notes, SongMeta(title="Blues"))
+    assert "<time-modification>" in xml  # written as a real triplet
+    assert len(measures) == 1
+
+
+def test_unwritable_rhythms_fall_back_to_a_simpler_sheet(monkeypatch):
+    # Unrounded decimals (0.1667) are what crashed the original upload; a 1/10000 grid
+    # keeps them as-is, so the first attempt fails and the coarser grid must take over.
+    monkeypatch.setattr(music, "DISPLAY_GRIDS", [(10000,), (4, 3)])
+    notes = [ev("C5", 0, 0.5, "R")] + [ev(p, 0.5 + i * 0.1667, 0.1667, "R") for i, p in enumerate(["G4", "A4", "G4"])]
+    notes += [ev("E4", 1, 1, "R"), ev("A2", 0, 2, "L")]
+    xml, _ = build_musicxml(notes, SongMeta(title="Odd"))
+    assert "<score-partwise" in xml
+
+    monkeypatch.setattr(music, "DISPLAY_GRIDS", [(10000,)])
+    with pytest.raises(MusicError, match="Could not draw"):
+        build_musicxml(notes, SongMeta(title="Odd"))
 
 
 def test_midi_import_splits_single_track_at_middle_c():

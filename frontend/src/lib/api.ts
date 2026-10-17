@@ -1,4 +1,4 @@
-import type { Song, SongSummary } from './music'
+import type { NoteEvent, Song, SongSummary } from './music'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -42,6 +42,12 @@ export const api = {
   },
 
   generateSong: (options: GenerateOptions) => request<Song>('/api/songs/generate', json(options)),
+
+  updateNotes: (id: number, notes: NoteEvent[]) =>
+    request<Song>(`/api/songs/${id}/notes`, {
+      ...json({ notes: notes.map(({ pitch, start, duration, hand, finger }) => ({ pitch, start, duration, hand, finger })) }),
+      method: 'PUT',
+    }),
 
   transcribeSong(files: File[], title?: string) {
     const form = new FormData()

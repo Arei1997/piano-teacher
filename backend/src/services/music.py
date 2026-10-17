@@ -8,8 +8,10 @@ heavy lifting in both directions:
 - build_musicxml: NoteEvents         -> engraved two-staff piano MusicXML
 """
 
+import math
 import re
 import tempfile
+from fractions import Fraction
 from pathlib import Path
 
 from music21 import (
@@ -33,6 +35,11 @@ PITCH_RE = re.compile(r"^([A-Ga-g])([#b♯♭]{0,2})(-?\d)$")
 STEP_SEMITONES = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 MIDDLE_C = 60
 SUPPORTED_EXTENSIONS = {".musicxml", ".xml", ".mxl", ".mid", ".midi"}
+
+# 1/24 of a quarter fits 32nds, 16th triplets and 8th triplets exactly.
+FINE_GRID = 24
+# Sheet-drawing attempts, finest first: exact, then 16ths + 8th triplets, then 16ths, then 8ths.
+DISPLAY_GRIDS: list[tuple[int, ...]] = [(FINE_GRID,), (4, 3), (4,), (2,)]
 
 
 class MusicError(ValueError):
@@ -76,7 +83,15 @@ def parse_key(text: str | None) -> key.Key:
         return key.Key("C")
 
 
-def _hand_part(notes: list[NoteEvent], hand: str, meta: SongMeta, total_length: float) -> stream.PartStaff:
+def snap(value: float, divisors: tuple[int, ...] = (FINE_GRID,)) -> Fraction:
+    """Nearest exact grid value, e.g. 0.333 -> 1/3. With several divisors the closest grid wins."""
+    candidates = [Fraction(round(value * d), d) for d in divisors]
+    return min(candidates, key=lambda c: abs(c - Fraction(value)))
+
+
+def _hand_part(
+    notes: list[NoteEvent], hand: str, meta: SongMeta, total_length: Fraction, divisors: tuple[int, ...]
+) -> stream.PartStaff:
     part = stream.PartStaff(id=f"piano-{hand}")
     part.insert(0, instrument.Piano())
     part.insert(0, clef.TrebleClef() if hand == "R" else clef.BassClef())
@@ -85,18 +100,21 @@ def _hand_part(notes: list[NoteEvent], hand: str, meta: SongMeta, total_length: 
     if hand == "R":
         part.insert(0, tempo.MetronomeMark(number=meta.tempo))
 
-    # Notes struck together with the same length become one chord.
-    groups: dict[tuple[float, float], list[NoteEvent]] = {}
+    # Notes struck together with the same length become one chord. Exact fractions
+    # (not floats) are required for music21 to write tuplets such as triplets.
+    smallest = Fraction(1, max(divisors))
+    groups: dict[tuple[Fraction, Fraction], list[NoteEvent]] = {}
     for n in notes:
-        groups.setdefault((n.start, n.duration), []).append(n)
+        groups.setdefault((snap(n.start, divisors), max(smallest, snap(n.duration, divisors))), []).append(n)
+    end = Fraction(0)
     for (start, length), group in sorted(groups.items()):
         names = [_to_m21_name(n.pitch) for n in sorted(group, key=lambda n: n.midi)]
         element = note.Note(names[0]) if len(names) == 1 else chord.Chord(names)
         element.duration = duration.Duration(length)
         part.insert(start, element)
+        end = max(end, start + length)
 
     # Pad so both staves end on the same barline.
-    end = max((n.start + n.duration for n in notes), default=0.0)
     if end < total_length:
         part.insert(end, note.Rest(quarterLength=total_length - end))
 
@@ -107,18 +125,31 @@ def _hand_part(notes: list[NoteEvent], hand: str, meta: SongMeta, total_length: 
 
 
 def build_musicxml(notes: list[NoteEvent], meta: SongMeta) -> tuple[str, list[Measure]]:
-    measure_length = meta.time_signature[0] * 4 / meta.time_signature[1]
-    end = max((n.start + n.duration for n in notes), default=measure_length)
-    total_length = -(-end // measure_length) * measure_length  # round up to a full bar
+    """Engrave notes as a two-staff piano score.
 
-    score = stream.Score()
-    score.metadata = _metadata(meta)
-    right = _hand_part([n for n in notes if n.hand == "R"], "R", meta, total_length)
-    left = _hand_part([n for n in notes if n.hand == "L"], "L", meta, total_length)
-    score.insert(0, right)
-    score.insert(0, left)
-    score.insert(0, layout.StaffGroup([right, left], symbol="brace", barTogether=True))
-    return _to_xml(score), _measures(score)
+    Overlapping rhythms (e.g. a triplet against a held chord) can split into lengths
+    no notation can write. Each retry draws the sheet on a coarser rhythmic grid;
+    the notes used for playback and practice are never changed.
+    """
+    measure_length = Fraction(meta.time_signature[0] * 4, meta.time_signature[1])
+    end = max((n.start + n.duration for n in notes), default=float(measure_length))
+    bars = math.ceil(snap(end) / measure_length)
+    total_length = max(1, bars) * measure_length
+
+    last_error: Exception | None = None
+    for divisors in DISPLAY_GRIDS:
+        score = stream.Score()
+        score.metadata = _metadata(meta)
+        right = _hand_part([n for n in notes if n.hand == "R"], "R", meta, total_length, divisors)
+        left = _hand_part([n for n in notes if n.hand == "L"], "L", meta, total_length, divisors)
+        score.insert(0, right)
+        score.insert(0, left)
+        score.insert(0, layout.StaffGroup([right, left], symbol="brace", barTogether=True))
+        try:
+            return _to_xml(score), _measures(score)
+        except Exception as exc:  # music21 raises several exception types for unwritable rhythms
+            last_error = exc
+    raise MusicError(f"Could not draw this song as sheet music: {last_error}")
 
 
 def _metadata(meta: SongMeta):
@@ -172,7 +203,10 @@ def parse_file(data: bytes, filename: str) -> tuple[list[NoteEvent], SongMeta, s
     if suffix in {".mid", ".midi"}:
         musicxml, measures = build_musicxml(notes, meta)
     else:
-        musicxml, measures = _to_xml(score), _measures(score)
+        try:
+            musicxml, measures = _to_xml(score), _measures(score)
+        except Exception:  # an original we can't re-export: engrave our own from the notes
+            musicxml, measures = build_musicxml(notes, meta)
     return notes, meta, musicxml, measures
 
 

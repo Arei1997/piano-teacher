@@ -12,7 +12,12 @@ from pydantic import BaseModel, Field
 class ArrangedEvent(BaseModel):
     beat: float = Field(description="Offset from the start of the measure in quarter notes, starting at 0.")
     pitches: list[str] = Field(description="Scientific pitch names struck together, e.g. ['G4', 'A4']. Use # or b.")
-    duration: float = Field(description="Length in quarter notes: 0.25 sixteenth, 0.5 eighth, 1 quarter, 2 half, 4 whole.")
+    duration: float = Field(
+        description=(
+            "Length in quarter notes: 0.25 sixteenth, 0.5 eighth, 1 quarter, 2 half, 4 whole. "
+            "Triplets: 0.3333 eighth-note triplet, 0.1667 sixteenth-note triplet, 0.6667 quarter-note triplet."
+        )
+    )
     fingers: list[int] = Field(description="Suggested finger (1=thumb ... 5=pinky) for each pitch, same order. Empty if unsure.")
 
 

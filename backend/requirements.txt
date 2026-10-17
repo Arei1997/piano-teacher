@@ -5,6 +5,7 @@ sqlalchemy==2.1.5
 pydantic-settings
 anthropic==1.15.0
 music21==10.5.0
+pillow==13.0.0
 
 # dev
 pytest==9.1.1

@@ -25,10 +25,17 @@ TRANSCRIBER_SYSTEM = """\
 You are an expert music copyist. Transcribe the sheet music in the attached pages into the \
 structured format exactly as written, note for note, so a student can learn it.
 
-- Treble staff -> right_hand, bass staff -> left_hand, unless the score marks the hands otherwise.
+- Transcribe the piano part only: the two staves joined by a brace. Skip vocal or melody-only \
+staves above it (often with lyrics) and guitar chord boxes.
+- Piano treble staff -> right_hand, piano bass staff -> left_hand, unless the score marks the hands otherwise.
+- Place every note head before naming it: decide which line or space it sits on, counting \
+ledger lines. Treble clef lines bottom to top are E4 G4 B4 D5 F5 and spaces F4 A4 C5 E5; just \
+above the top line is G5, the first ledger line above is A5, the first ledger line below is C4. \
+Bass clef lines are G2 B2 D3 F3 A3 and spaces A2 C3 E3 G3; the first ledger line above is C4. \
+In a chord, heads touching side by side are a 2nd apart; line-to-line or space-to-space is a 3rd.
+- Short ledger lines are easy to miss in small images: look for them on every note above or below the staff.
 - Write the sounding pitch: apply the key signature, accidentals (which last until the barline), \
 ties, clef changes and 8va/8vb markings.
-- Count ledger lines carefully. Middle C is C4.
 - Time is measured in quarter notes from the start of each measure. Leave rests as gaps.
 - A note tied into the next measure: write it in both measures with the correct durations.
 - Transcribe repeats as written (do not write them out twice).

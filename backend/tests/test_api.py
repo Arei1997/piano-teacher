@@ -28,6 +28,25 @@ def test_import_musicxml_then_delete(client):
     assert client.get(f"/api/songs/{imported['id']}").status_code == 404
 
 
+def test_update_notes_fixes_a_misread_chord_and_redraws(client):
+    demo_id = next(s["id"] for s in client.get("/api/songs").json() if s["title"] == "Ode to Joy")
+    song = client.get(f"/api/songs/{demo_id}").json()
+    notes = [{k: n[k] for k in ("pitch", "start", "duration", "hand", "finger")} for n in song["notes"]]
+    notes[0]["pitch"] = "bb4"  # correct a note, in loose spelling
+    notes.pop()  # delete one
+
+    response = client.put(f"/api/songs/{demo_id}/notes", json={"notes": notes})
+    assert response.status_code == 200
+    updated = response.json()
+    assert len(updated["notes"]) == len(song["notes"]) - 1
+    fixed = next(n for n in updated["notes"] if n["start"] == notes[0]["start"] and n["hand"] == notes[0]["hand"])
+    assert (fixed["pitch"], fixed["midi"]) == ("Bb4", 70)
+    assert "<alter>-1</alter>" in updated["musicxml"]  # the sheet was redrawn with the flat
+
+    bad = client.put(f"/api/songs/{demo_id}/notes", json={"notes": [{**notes[0], "pitch": "H9"}]})
+    assert bad.status_code == 422
+
+
 def test_import_rejects_bad_file(client):
     response = client.post("/api/songs/import", files={"file": ("notes.txt", b"hello", "text/plain")})
     assert response.status_code == 422

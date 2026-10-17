@@ -50,6 +50,18 @@ class SongOut(SongMeta):
     created_at: datetime
 
 
+class NoteInput(BaseModel):
+    pitch: str
+    start: float = Field(ge=0)
+    duration: float = Field(gt=0)
+    hand: Hand
+    finger: int | None = Field(default=None, ge=1, le=5)
+
+
+class NotesUpdate(BaseModel):
+    notes: list[NoteInput] = Field(min_length=1, max_length=20000)
+
+
 class GenerateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     artist: str | None = Field(default=None, max_length=200)

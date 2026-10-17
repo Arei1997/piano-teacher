@@ -7,10 +7,19 @@ from src.config import settings
 from src.database import get_db
 from src.models import Song
 from src.schemas.arrangement import Arrangement
-from src.schemas.song import GenerateRequest, Measure, NoteEvent, SongMeta, SongOut, SongSummary, Source
+from src.schemas.song import (
+    GenerateRequest,
+    Measure,
+    NoteEvent,
+    NotesUpdate,
+    SongMeta,
+    SongOut,
+    SongSummary,
+    Source,
+)
 from src.services import llm
 from src.services.arrangement import arrangement_to_notes
-from src.services.music import MusicError, build_musicxml, parse_file
+from src.services.music import MusicError, build_musicxml, normalize_pitch, parse_file, sort_notes
 
 router = APIRouter(prefix="/api/songs", tags=["songs"])
 
@@ -81,6 +90,35 @@ def delete_song(song_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Song not found")
     db.delete(song)
     db.commit()
+
+
+@router.put("/{song_id}/notes", response_model=SongOut)
+async def update_notes(song_id: int, update: NotesUpdate, db: Session = Depends(get_db)):
+    """Save corrected notes (e.g. fixing a misread transcription) and redraw the sheet from them."""
+    song = db.get(Song, song_id)
+    if not song:
+        raise HTTPException(404, "Song not found")
+    try:
+        notes = []
+        for n in update.notes:
+            name, midi = normalize_pitch(n.pitch)
+            notes.append(NoteEvent(pitch=name, midi=midi, **n.model_dump(exclude={"pitch"})))
+        notes = sort_notes(notes)
+        meta = SongMeta(
+            title=song.title,
+            artist=song.artist,
+            tempo=song.tempo,
+            time_signature=tuple(song.time_signature),
+            key=song.key,
+        )
+        musicxml, measures = await run_in_threadpool(build_musicxml, notes, meta)
+    except MusicError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    song.notes = [n.model_dump() for n in notes]
+    song.measures = [m.model_dump() for m in measures]
+    song.musicxml = musicxml
+    db.commit()
+    return to_out(song)
 
 
 @router.post("/import", response_model=SongOut, status_code=201)

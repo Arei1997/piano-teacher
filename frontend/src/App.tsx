@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AddSongDialog } from './components/AddSongDialog'
 import { ChatPanel } from './components/ChatPanel'
 import { Controls } from './components/Controls'
@@ -6,10 +6,12 @@ import type { KeyMark } from './components/Piano'
 import { Piano } from './components/Piano'
 import { SheetMusic } from './components/SheetMusic'
 import { SongLibrary } from './components/SongLibrary'
+import type { NoteEdit } from './components/StepList'
 import { NowNext, StepList } from './components/StepList'
 import type { InputSource } from './hooks/useNoteInput'
 import { useNoteInput } from './hooks/useNoteInput'
 import { usePlayer } from './hooks/usePlayer'
+import { useWakeLock } from './hooks/useWakeLock'
 import { api } from './lib/api'
 import { loadPiano, noteOff, noteOn } from './lib/audio'
 import type { Song, SongSummary } from './lib/music'
@@ -38,6 +40,36 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
 
   const player = usePlayer(song)
+  useWakeLock(Boolean(song))
+
+  // Note corrections show instantly and save (and redraw the sheet) shortly after the last change.
+  const [saving, setSaving] = useState(false)
+  const saveTimer = useRef(0)
+  const editVersion = useRef(0)
+  function editNotes(edit: NoteEdit) {
+    if (!song) return
+    let notes = song.notes
+    for (const [from, to] of edit.replace ?? []) {
+      notes = to ? notes.map((n) => (n === from ? to : n)) : notes.filter((n) => n !== from)
+    }
+    notes = [...notes, ...(edit.add ?? [])]
+    if (!notes.length) return
+    setSong({ ...song, notes })
+    const version = ++editVersion.current
+    setSaving(true)
+    window.clearTimeout(saveTimer.current)
+    saveTimer.current = window.setTimeout(async () => {
+      try {
+        const saved = await api.updateNotes(song.id, notes)
+        // Ignore a reply that a newer edit has already superseded.
+        if (version === editVersion.current) setSong((current) => (current?.id === saved.id ? saved : current))
+      } catch (e) {
+        setError(`Could not save your change: ${(e as Error).message}`)
+      } finally {
+        if (version === editVersion.current) setSaving(false)
+      }
+    }, 700)
+  }
   const { steps, stepIndex, mode, hands, wait } = player
 
   const openSong = useCallback(async (id: number) => {
@@ -201,7 +233,7 @@ export default function App() {
                 🎉 Nice! You played it all. <button onClick={player.restart}>Again</button>
               </div>
             ) : null}
-            <StepList steps={steps} current={stepIndex} hands={hands} onSelect={player.seekToStep} />
+            <StepList steps={steps} current={stepIndex} hands={hands} onSelect={player.seekToStep} onEdit={editNotes} saving={saving} />
           </div>
           <div className="side chat-side">
             <ChatPanel song={song} position={position} aiReady={aiReady} />

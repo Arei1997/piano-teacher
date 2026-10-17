@@ -215,9 +215,11 @@ export function usePlayer(song: Song | null) {
   }, [stopTransport, firstPracticeStep, resetWait])
 
   // New song, mode, hands or loop: stop and go back to the start of the practice range.
+  // Keyed on the song's id so correcting a note doesn't throw the student back to bar 1.
+  const songId = song?.id
   useEffect(() => {
     restart()
-  }, [song, mode, hands, loop, restart])
+  }, [songId, mode, hands, loop, restart])
 
   useEffect(() => stopTransport, [stopTransport])
 

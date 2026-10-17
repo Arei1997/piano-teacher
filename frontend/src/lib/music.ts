@@ -50,6 +50,17 @@ const EPSILON = 1e-3
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const BLACK = new Set([1, 3, 6, 8, 10])
 
+const FLAT_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
+
+/** Move a note by semitones, keeping its spelling style (flats stay flats; naturals go sharp up, flat down). */
+export function shiftPitch(note: NoteEvent, semitones: number): NoteEvent | null {
+  const midi = note.midi + semitones
+  if (midi < FIRST_KEY || midi > LAST_KEY) return null
+  const useFlats = note.pitch.includes('b') || (!note.pitch.includes('#') && semitones < 0)
+  const names = useFlats ? FLAT_NAMES : NAMES
+  return { ...note, midi, pitch: `${names[midi % 12]}${Math.floor(midi / 12) - 1}` }
+}
+
 export const isBlackKey = (midi: number) => BLACK.has(midi % 12)
 export const midiToName = (midi: number) => `${NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`
 export const measureLength = ([num, den]: [number, number]) => (num * 4) / den

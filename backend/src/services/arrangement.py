@@ -3,7 +3,7 @@ from fractions import Fraction
 
 from src.schemas.arrangement import Arrangement
 from src.schemas.song import Measure, NoteEvent, SongMeta
-from src.services.music import MusicError, normalize_pitch, sort_notes
+from src.services.music import FINE_GRID, MusicError, normalize_pitch, snap, sort_notes
 
 
 def measure_length(time_signature: tuple[int, int]) -> float:
@@ -47,8 +47,9 @@ def arrangement_to_notes(arrangement: Arrangement) -> tuple[list[NoteEvent], Son
                         NoteEvent(
                             pitch=name,
                             midi=midi,
-                            start=bar_start + event.beat,
-                            duration=event.duration,
+                            # Clean float noise such as 0.333 into exact triplet values.
+                            start=float(snap(bar_start + event.beat)),
+                            duration=float(max(snap(event.duration), Fraction(1, FINE_GRID))),
                             hand=hand,
                             finger=finger if finger in (1, 2, 3, 4, 5) else None,
                         )

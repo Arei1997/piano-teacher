@@ -4,6 +4,7 @@ import logging
 from collections.abc import AsyncIterator
 
 import anthropic
+from starlette.concurrency import run_in_threadpool
 
 from src.config import settings
 from src.prompts.teacher import ARRANGER_SYSTEM, CHAT_SYSTEM, SONG_CONTEXT_TEMPLATE, TRANSCRIBER_SYSTEM
@@ -11,6 +12,7 @@ from src.schemas.arrangement import Arrangement
 from src.schemas.chat import ChatMessage, PlayerPosition
 from src.schemas.song import GenerateRequest, SongOut
 from src.services.arrangement import format_measures
+from src.services.sheet_images import prepare_page
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,8 @@ class LlmError(Exception):
 def get_client() -> anthropic.AsyncAnthropic:
     global _client
     if _client is None:
-        _client = anthropic.AsyncAnthropic(api_key=settings.ai_api_key or None)
+        headers = {"anthropic-workspace-id": settings.ai_workspace_id} if settings.ai_workspace_id else None
+        _client = anthropic.AsyncAnthropic(api_key=settings.ai_api_key or None, default_headers=headers)
     return _client
 
 
@@ -50,18 +53,33 @@ async def generate_arrangement(request: GenerateRequest) -> Arrangement:
 
 async def transcribe_sheet(files: list[tuple[str, bytes]], title_hint: str | None) -> Arrangement:
     content: list[dict] = []
-    for media_type, data in files:
-        encoded = base64.standard_b64encode(data).decode("ascii")
-        block_type = "document" if media_type == PDF_TYPE else "image"
-        content.append({"type": block_type, "source": {"type": "base64", "media_type": media_type, "data": encoded}})
-    text = "Transcribe this sheet music. The pages are in order."
+    for number, (media_type, data) in enumerate(files, start=1):
+        if media_type == PDF_TYPE:
+            content.append({"type": "text", "text": f"Page file {number} (PDF):"})
+            content.append(_block("document", PDF_TYPE, data))
+            continue
+        whole, *slices = await run_in_threadpool(prepare_page, data)
+        content.append({"type": "text", "text": f"Page {number}, whole page (use for layout and bar order):"})
+        content.append(_block("image", "image/png", whole))
+        for i, piece in enumerate(slices, start=1):
+            content.append({"type": "text", "text": f"Page {number}, enlarged slice {i} of {len(slices)}, top to bottom:"})
+            content.append(_block("image", "image/png", piece))
+    text = (
+        "Transcribe this sheet music. Pages are in order. The enlarged slices repeat parts of the "
+        "whole page at higher resolution: read pitches from them, and transcribe each bar once."
+    )
     if title_hint:
         text += f" The piece is called '{title_hint}'."
     content.append({"type": "text", "text": text})
     return await _structured(TRANSCRIBER_SYSTEM, content)
 
 
-async def _structured(system: str, content: list[dict]) -> Arrangement:
+def _block(kind: str, media_type: str, data: bytes) -> dict:
+    encoded = base64.standard_b64encode(data).decode("ascii")
+    return {"type": kind, "source": {"type": "base64", "media_type": media_type, "data": encoded}}
+
+
+async def _structured(system: str, content: list[dict], effort: str = "high") -> Arrangement:
     try:
         # Songs can run to thousands of notes, so stream to avoid HTTP timeouts.
         async with get_client().beta.messages.stream(
@@ -69,7 +87,7 @@ async def _structured(system: str, content: list[dict]) -> Arrangement:
             max_tokens=64000,
             betas=[FALLBACK_BETA],
             fallbacks="default",
-            output_config={"effort": "high"},
+            output_config={"effort": effort},
             output_format=Arrangement,
             system=system,
             messages=[{"role": "user", "content": content}],
