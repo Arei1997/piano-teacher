@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as Tone from 'tone'
 import { loadPiano, playNote, silence } from '../lib/audio'
 import type { GameStats, Grade, Target } from '../lib/game'
-import { WINDOW_SECONDS, applyGrade, applyWrong, createTargets, emptyStats, judgePress, sweepMisses } from '../lib/game'
+import { WINDOW_SECONDS, applyGrade, applyWrong, createTargets, emptyStats, judgePress, multiplier, sweepMisses } from '../lib/game'
+import { GameEvents } from '../lib/effects'
 import type { HandFilter, NoteEvent, Song, Step } from '../lib/music'
 import { barlines, buildSteps, inHands, stepAt } from '../lib/music'
 
@@ -73,6 +74,7 @@ export function usePlayer(song: Song | null) {
   const [sounding, setSounding] = useState<NoteEvent[]>([])
   const [wait, setWait] = useState<WaitState>(EMPTY_WAIT)
   const [game, setGame] = useState<GameState>(NEW_GAME)
+  const [events] = useState(() => new GameEvents())
   const bpm = song ? (song.tempo * tempoPct) / 100 : 120
 
   const range = useMemo(() => {
@@ -92,11 +94,29 @@ export function usePlayer(song: Song | null) {
   const targetsRef = useRef<Target[]>([])
   const judgments = useRef(new Map<NoteEvent, Grade>()) // read by the falling-notes view each frame
   const gameRef = useRef<GameState>(NEW_GAME)
+  const waitRef = useRef<WaitState>(EMPTY_WAIT)
 
+  // Game and wait state live in refs too, so key presses can read and update them
+  // synchronously (and fire effects exactly once) without waiting for a re-render.
   const updateGame = useCallback((next: GameState) => {
     gameRef.current = next
     setGame(next)
   }, [])
+  const updateWait = useCallback((next: WaitState) => {
+    waitRef.current = next
+    setWait(next)
+  }, [])
+
+  /** Score one judgement, and celebrate when the combo multiplier goes up. */
+  const scoreGrade = useCallback(
+    (grade: Grade) => {
+      const before = gameRef.current.stats
+      const stats = applyGrade(before, grade)
+      updateGame({ ...gameRef.current, stats, last: { grade, at: performance.now() } })
+      if (multiplier(stats.combo) > multiplier(before.combo)) events.emit({ type: 'milestone', multiplier: multiplier(stats.combo) })
+    },
+    [events, updateGame],
+  )
 
   const firstPracticeStep = useCallback((fromBeat: number) => {
     const { steps, hands, range } = live.current
@@ -188,7 +208,10 @@ export function usePlayer(song: Song | null) {
       if (!loop && beat >= range.end + tail) {
         stopTransport()
         if (isGame) {
-          sweepMisses(targetsRef.current, Infinity, secondsPerBeat).forEach((t) => judgments.current.set(t.note, 'miss'))
+          for (const t of sweepMisses(targetsRef.current, Infinity, secondsPerBeat)) {
+            judgments.current.set(t.note, 'miss')
+            scoreGrade('miss')
+          }
           updateGame({ ...gameRef.current, finished: true })
         } else {
           setListenStep(firstPracticeStep(range.start))
@@ -198,14 +221,10 @@ export function usePlayer(song: Song | null) {
       }
 
       if (isGame) {
-        const missed = sweepMisses(targetsRef.current, beat, secondsPerBeat)
-        if (missed.length) {
-          let stats = gameRef.current.stats
-          for (const t of missed) {
-            judgments.current.set(t.note, 'miss')
-            stats = applyGrade(stats, 'miss')
-          }
-          updateGame({ ...gameRef.current, stats, last: { grade: 'miss', at: performance.now() } })
+        for (const t of sweepMisses(targetsRef.current, beat, secondsPerBeat)) {
+          judgments.current.set(t.note, 'miss')
+          scoreGrade('miss')
+          events.emit({ type: 'miss', midi: t.note.midi })
         }
       }
 
@@ -223,7 +242,7 @@ export function usePlayer(song: Song | null) {
       frameRef.current = requestAnimationFrame(tick)
     }
     frameRef.current = requestAnimationFrame(tick)
-  }, [song, tempoPct, listenStep, stopTransport, firstPracticeStep, updateGame])
+  }, [song, tempoPct, listenStep, stopTransport, firstPracticeStep, updateGame, scoreGrade, events])
 
   const pause = useCallback(() => {
     cancelAnimationFrame(frameRef.current)
@@ -242,53 +261,69 @@ export function usePlayer(song: Song | null) {
 
   const resetWait = useCallback(
     (fromBeat: number) => {
-      setWait({ ...EMPTY_WAIT, hits: new Set(), index: firstPracticeStep(fromBeat) })
+      updateWait({ ...EMPTY_WAIT, hits: new Set(), index: firstPracticeStep(fromBeat) })
     },
-    [firstPracticeStep],
+    [firstPracticeStep, updateWait],
   )
 
   /** Feed every key press here: wait mode checks it and advances, game mode scores it. */
   const registerPress = useCallback(
     (midi: number) => {
       const currentMode = live.current.mode
+      if (currentMode === 'listen') {
+        events.emit({ type: 'press', midi, ok: true })
+        return
+      }
+
       if (currentMode === 'game') {
         if (Tone.getTransport().state !== 'started' || !gameRef.current.started) return
         const target = judgePress(targetsRef.current, midi, transportBeat(), 60 / Tone.getTransport().bpm.value)
-        const current = gameRef.current
-        if (target?.grade) {
+        if (target?.grade && target.grade !== 'miss') {
           judgments.current.set(target.note, target.grade)
-          updateGame({ ...current, stats: applyGrade(current.stats, target.grade), last: { grade: target.grade, at: performance.now() } })
+          scoreGrade(target.grade)
+          events.emit({ type: 'press', midi, ok: true })
+          events.emit({ type: 'hit', midi, grade: target.grade })
         } else {
+          const current = gameRef.current
           updateGame({ ...current, stats: applyWrong(current.stats), last: { grade: 'wrong', at: performance.now() } })
+          events.emit({ type: 'press', midi, ok: false })
         }
         return
       }
-      if (currentMode !== 'wait') return
-      setWait((prev) => {
-        const { steps, hands, loop, range } = live.current
-        const step = steps[prev.index]
-        if (!step || prev.finished) return prev
-        const required = new Set(step.notes.filter((n) => inHands(n, hands)).map((n) => n.midi))
-        if (!required.has(midi)) return { ...prev, wrong: midi, wrongAt: Date.now() }
 
-        const hits = new Set(prev.hits).add(midi)
-        if (![...required].every((m) => hits.has(m))) return { ...prev, hits, wrong: null }
+      const { steps, hands, loop, range } = live.current
+      const prev = waitRef.current
+      const step = steps[prev.index]
+      if (!step || prev.finished) return
+      const required = new Set(step.notes.filter((n) => inHands(n, hands)).map((n) => n.midi))
+      if (!required.has(midi)) {
+        events.emit({ type: 'press', midi, ok: false })
+        updateWait({ ...prev, wrong: midi, wrongAt: Date.now() })
+        return
+      }
+      events.emit({ type: 'press', midi, ok: true })
 
-        let next = steps.findIndex((s, i) => i > prev.index && isPracticeStep(s, hands, range))
-        if (next === -1 && loop) next = steps.findIndex((s) => isPracticeStep(s, hands, range))
-        if (next === -1) return { ...prev, hits, finished: true }
-        return { index: next, hits: new Set(), wrong: null, wrongAt: 0, finished: false }
-      })
+      const hits = new Set(prev.hits).add(midi)
+      if (![...required].every((m) => hits.has(m))) {
+        updateWait({ ...prev, hits, wrong: null })
+        return
+      }
+      // The whole chord is down: celebrate it and move to the next step.
+      required.forEach((m) => events.emit({ type: 'hit', midi: m, grade: 'perfect' }))
+      let next = steps.findIndex((s, i) => i > prev.index && isPracticeStep(s, hands, range))
+      if (next === -1 && loop) next = steps.findIndex((s) => isPracticeStep(s, hands, range))
+      if (next === -1) updateWait({ ...prev, hits, finished: true })
+      else updateWait({ index: next, hits: new Set(), wrong: null, wrongAt: 0, finished: false })
     },
-    [updateGame],
+    [events, scoreGrade, updateGame, updateWait],
   )
 
   // Clear the red "wrong key" flash shortly after it appears.
   useEffect(() => {
     if (wait.wrong === null) return
-    const timer = setTimeout(() => setWait((w) => ({ ...w, wrong: null })), 450)
+    const timer = setTimeout(() => updateWait({ ...waitRef.current, wrong: null }), 450)
     return () => clearTimeout(timer)
-  }, [wait.wrong, wait.wrongAt])
+  }, [wait.wrong, wait.wrongAt, updateWait])
 
   // ---- shared ------------------------------------------------------------
 
@@ -344,6 +379,8 @@ export function usePlayer(song: Song | null) {
   return {
     steps,
     measures,
+    range,
+    events,
     firstMeasure,
     lastMeasure,
     mode,

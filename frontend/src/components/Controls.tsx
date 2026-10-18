@@ -1,5 +1,6 @@
 import type { Player } from '../hooks/usePlayer'
 import type { HandFilter } from '../lib/music'
+import { THEMES } from '../lib/themes'
 
 export type View = 'sheet' | 'falling'
 
@@ -7,13 +8,15 @@ interface ControlsProps {
   player: Player
   view: View
   setView: (view: View) => void
+  themeId: string
+  setThemeId: (id: string) => void
   baseTempo: number
   midi: { supported: boolean; devices: string[]; error: string | null; connect: () => void }
   soundOnMidi: boolean
   setSoundOnMidi: (value: boolean) => void
 }
 
-export function Controls({ player, view, setView, baseTempo, midi, soundOnMidi, setSoundOnMidi }: ControlsProps) {
+export function Controls({ player, view, setView, themeId, setThemeId, baseTempo, midi, soundOnMidi, setSoundOnMidi }: ControlsProps) {
   const { mode, playing, loading, loop, firstMeasure, lastMeasure } = player
   const setLoopEdge = (edge: 'from' | 'to', value: number) => {
     const current = loop ?? { from: firstMeasure, to: lastMeasure }
@@ -45,6 +48,19 @@ export function Controls({ player, view, setView, baseTempo, midi, soundOnMidi, 
       <button onClick={() => setView(view === 'sheet' ? 'falling' : 'sheet')} title="Switch between sheet music and falling notes">
         {view === 'sheet' ? '⬇ Falling notes' : '🎼 Sheet music'}
       </button>
+
+      {view === 'falling' ? (
+        <label className="inline">
+          Theme
+          <select value={themeId} onChange={(e) => setThemeId(e.target.value)} style={{ width: 'auto' }}>
+            {THEMES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
 
       {mode !== 'wait' ? (
         <button className="primary play" onClick={playing ? player.pause : player.play} disabled={loading}>
