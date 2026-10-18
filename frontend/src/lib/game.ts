@@ -89,6 +89,62 @@ export function accuracy(stats: GameStats): number {
   return total ? (stats.perfect + stats.good * 0.5) / total : 0
 }
 
+/**
+ * How cleanly one training repetition went: notes hit on time out of everything played
+ * or due. Unlike `accuracy`, wrong notes count against it, since they build bad habits.
+ */
+export function repAccuracy(stats: GameStats): number {
+  const hits = stats.perfect + stats.good
+  const total = hits + stats.miss + stats.wrong
+  return total ? hits / total : 0
+}
+
+export interface TrainSettings {
+  startPct: number
+  targetPct: number
+  stepPct: number
+  /** Minimum repAccuracy for a repetition to count as clean. */
+  threshold: number
+  /** Clean repetitions in a row at the target tempo to master the passage. */
+  repsNeeded: number
+}
+
+export const DEFAULT_TRAIN: TrainSettings = { startPct: 60, targetPct: 100, stepPct: 10, threshold: 0.9, repsNeeded: 3 }
+
+export interface TrainProgress {
+  rep: number
+  tempoPct: number
+  cleanAtTarget: number
+  lastAccuracy: number | null
+  mastered: boolean
+}
+
+export const startTraining = (settings: TrainSettings): TrainProgress => ({
+  rep: 0,
+  tempoPct: settings.startPct,
+  cleanAtTarget: 0,
+  lastAccuracy: null,
+  mastered: false,
+})
+
+/**
+ * The speed ladder: a clean repetition earns a faster tempo (up to the target), a sloppy one
+ * drops back a step. At the target, enough clean repetitions in a row master the passage.
+ */
+export function finishRep(progress: TrainProgress, rep: GameStats, settings: TrainSettings): TrainProgress {
+  const score = repAccuracy(rep)
+  const clean = score >= settings.threshold
+  const base = { ...progress, rep: progress.rep + 1, lastAccuracy: score }
+  if (!clean) {
+    return { ...base, tempoPct: Math.max(settings.startPct, progress.tempoPct - settings.stepPct), cleanAtTarget: 0 }
+  }
+  if (progress.tempoPct < settings.targetPct) {
+    return { ...base, tempoPct: Math.min(settings.targetPct, progress.tempoPct + settings.stepPct), cleanAtTarget: 0 }
+  }
+  const cleanAtTarget = progress.cleanAtTarget + 1
+  return { ...base, cleanAtTarget, mastered: cleanAtTarget >= settings.repsNeeded }
+}
+
 export function rank(stats: GameStats): 'S' | 'A' | 'B' | 'C' | 'D' {
   const a = accuracy(stats)
   if (a >= 0.95 && stats.miss === 0) return 'S'

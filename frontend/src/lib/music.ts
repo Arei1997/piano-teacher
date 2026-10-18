@@ -14,7 +14,7 @@ export interface SongSummary {
   id: number
   title: string
   artist: string | null
-  source: 'import' | 'ai' | 'scan'
+  source: 'import' | 'ai' | 'scan' | 'exercise'
   created_at: string
 }
 

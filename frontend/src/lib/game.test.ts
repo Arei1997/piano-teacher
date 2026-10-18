@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { accuracy, applyGrade, applyWrong, createTargets, emptyStats, judgePress, multiplier, rank, sweepMisses } from './game'
+import {
+  DEFAULT_TRAIN,
+  accuracy,
+  applyGrade,
+  applyWrong,
+  createTargets,
+  emptyStats,
+  finishRep,
+  judgePress,
+  multiplier,
+  rank,
+  repAccuracy,
+  startTraining,
+  sweepMisses,
+} from './game'
 import type { NoteEvent } from './music'
 
 const note = (midi: number, start: number, hand: 'R' | 'L' = 'R'): NoteEvent => ({
@@ -49,6 +63,39 @@ describe('sweepMisses', () => {
     expect(sweepMisses(targets, 0.3, SPB)).toHaveLength(0) // still inside the window
     expect(sweepMisses(targets, 0.4, SPB).map((t) => t.note.midi)).toEqual([60])
     expect(sweepMisses(targets, 0.4, SPB)).toHaveLength(0) // not counted twice
+  })
+})
+
+describe('training', () => {
+  const clean = { ...emptyStats(), perfect: 9, good: 1 } // 100%
+  const sloppy = { ...emptyStats(), perfect: 8, wrong: 2 } // 80%: wrong notes count against a rep
+
+  it('scores a repetition with wrong notes counted against it', () => {
+    expect(repAccuracy(clean)).toBe(1)
+    expect(repAccuracy(sloppy)).toBe(0.8)
+  })
+
+  it('climbs the speed ladder on clean reps and drops back on sloppy ones', () => {
+    let p = startTraining(DEFAULT_TRAIN) // 60%
+    p = finishRep(p, clean, DEFAULT_TRAIN)
+    expect(p.tempoPct).toBe(70)
+    p = finishRep(p, sloppy, DEFAULT_TRAIN)
+    expect(p.tempoPct).toBe(60)
+    p = finishRep(p, sloppy, DEFAULT_TRAIN)
+    expect(p.tempoPct).toBe(60) // never below the start tempo
+    expect(p.rep).toBe(3)
+  })
+
+  it('masters the passage after enough clean reps in a row at the target tempo', () => {
+    let p = { ...startTraining(DEFAULT_TRAIN), tempoPct: 100 }
+    p = finishRep(p, clean, DEFAULT_TRAIN)
+    p = finishRep(p, clean, DEFAULT_TRAIN)
+    expect(p.mastered).toBe(false)
+    p = finishRep(p, sloppy, DEFAULT_TRAIN) // a slip resets the streak
+    expect([p.cleanAtTarget, p.tempoPct]).toEqual([0, 90])
+    p = { ...p, tempoPct: 100 }
+    for (let i = 0; i < 3; i++) p = finishRep(p, clean, DEFAULT_TRAIN)
+    expect(p.mastered).toBe(true)
   })
 })
 

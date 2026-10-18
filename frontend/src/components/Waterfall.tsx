@@ -21,6 +21,8 @@ interface WaterfallProps {
   smooth: boolean
   /** Show 3-2-1-GO before the first note (game mode). */
   countdown: boolean
+  /** The passage repeats: show the start of the next pass falling in behind the end of this one. */
+  looping: boolean
 }
 
 type Palette = NonNullable<Theme['colors']>
@@ -110,7 +112,8 @@ export function Waterfall(props: WaterfallProps) {
     const beams: Beam[] = []
     let shake = 0 // seconds of screen shake left
     let pulse = 0 // hit-line brightness boost, decays to 0
-    let flash = 0 // full-screen flash on milestones
+    let flash = 0 // full-screen flash on milestones and finished reps
+    let flashColor = palette.hitLine
 
     const lane = (midi: number) => {
       const keyWidth = canvas.clientWidth / WHITE_KEY_COUNT
@@ -141,6 +144,17 @@ export function Waterfall(props: WaterfallProps) {
         for (let i = 0; i < 80; i++) burst(rand(0, width), hitY, 1, [palette.right, palette.left, palette.perfect, '#ffffff'], 900)
         shake = 0.35
         flash = 0.35
+        flashColor = palette.hitLine
+        return
+      }
+      if (event.type === 'rep') {
+        // A finished training repetition: green sparkle for clean, a red wash for sloppy.
+        flash = event.clean ? 0.3 : 0.25
+        flashColor = event.clean ? palette.perfect : palette.miss
+        if (event.clean) {
+          const width = canvas.clientWidth
+          for (let i = 0; i < 40; i++) burst(rand(0, width), hitY, 1, [palette.perfect, '#ffffff'], 650)
+        }
         return
       }
       const { x, width } = lane(event.midi)
@@ -168,7 +182,7 @@ export function Waterfall(props: WaterfallProps) {
     const draw = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
-      const { notes, measures, hands, bpm, range, smooth, countdown } = live.current
+      const { notes, measures, hands, bpm, range, smooth, countdown, looping } = live.current
       const target = getBeat()
       shown = smooth && Math.abs(target - shown) > 1e-3 ? shown + (target - shown) * Math.min(1, dt * 12) : target
 
@@ -232,16 +246,23 @@ export function Waterfall(props: WaterfallProps) {
       }
 
       // Notes: white-key notes first so black-key notes sit on top, like the keys themselves.
+      // When looping, notes after the passage are hidden and the passage's opening notes are
+      // drawn again one loop-length later, so the next repetition falls in seamlessly.
       const end = shown + visibleBeats
+      const loopLength = range.end - range.start
+      const passes = looping && end > range.end ? [0, loopLength] : [0]
       for (const black of [false, true]) {
+        for (const offset of passes)
         for (const n of notes) {
-          if (isBlackKey(n.midi) !== black || n.start > end || n.start + n.duration < shown - 0.05) continue
+          const start = n.start + offset
+          if (isBlackKey(n.midi) !== black || start > end || start + n.duration < shown - 0.05) continue
+          if (looping && (n.start < range.start - 1e-3 || n.start >= range.end - 1e-3)) continue
           const { x, width: w } = lane(n.midi)
-          const bottom = yOf(n.start)
-          const top = yOf(n.start + n.duration)
-          const grade = judgments.current?.get(n)
+          const bottom = yOf(start)
+          const top = yOf(start + n.duration)
+          const grade = offset ? undefined : judgments.current?.get(n)
           const mine = inHands(n, hands)
-          const sounding = n.start <= shown && shown < n.start + n.duration
+          const sounding = start <= shown && shown < start + n.duration
           const color = grade ? palette[grade] : palette[n.hand === 'R' ? 'right' : 'left']
 
           ctx.globalAlpha = mine ? (grade === 'miss' ? 0.5 : 1) : 0.28
@@ -312,7 +333,7 @@ export function Waterfall(props: WaterfallProps) {
       if (flash > 0) {
         flash -= dt
         ctx.globalAlpha = Math.max(0, flash) * 0.5
-        ctx.fillStyle = palette.hitLine
+        ctx.fillStyle = flashColor
         ctx.fillRect(0, 0, width, height)
       }
 

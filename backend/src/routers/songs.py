@@ -71,7 +71,8 @@ def save_song(
 
 @router.get("", response_model=list[SongSummary])
 def list_songs(db: Session = Depends(get_db)):
-    songs = db.scalars(select(Song).order_by(Song.created_at.desc())).all()
+    # Exercises live in the Practice section, not the song library.
+    songs = db.scalars(select(Song).where(Song.source != "exercise").order_by(Song.created_at.desc())).all()
     return [SongSummary(id=s.id, title=s.title, artist=s.artist, source=s.source, created_at=s.created_at) for s in songs]
 
 

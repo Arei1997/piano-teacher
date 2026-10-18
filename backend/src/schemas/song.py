@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 Hand = Literal["R", "L"]
-Source = Literal["import", "ai", "scan"]
+Source = Literal["import", "ai", "scan", "exercise"]
 
 
 class NoteEvent(BaseModel):

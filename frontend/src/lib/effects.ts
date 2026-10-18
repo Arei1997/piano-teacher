@@ -6,6 +6,7 @@ export type GameEvent =
   | { type: 'hit'; midi: number; grade: Exclude<Grade, 'miss'> }
   | { type: 'miss'; midi: number }
   | { type: 'milestone'; multiplier: number }
+  | { type: 'rep'; clean: boolean }
 
 /**
  * A tiny event channel from the player to the canvas. Effects fire many times a second,
