@@ -1,15 +1,19 @@
 import type { Player } from '../hooks/usePlayer'
 import type { HandFilter } from '../lib/music'
 
+export type View = 'sheet' | 'falling'
+
 interface ControlsProps {
   player: Player
+  view: View
+  setView: (view: View) => void
   baseTempo: number
   midi: { supported: boolean; devices: string[]; error: string | null; connect: () => void }
   soundOnMidi: boolean
   setSoundOnMidi: (value: boolean) => void
 }
 
-export function Controls({ player, baseTempo, midi, soundOnMidi, setSoundOnMidi }: ControlsProps) {
+export function Controls({ player, view, setView, baseTempo, midi, soundOnMidi, setSoundOnMidi }: ControlsProps) {
   const { mode, playing, loading, loop, firstMeasure, lastMeasure } = player
   const setLoopEdge = (edge: 'from' | 'to', value: number) => {
     const current = loop ?? { from: firstMeasure, to: lastMeasure }
@@ -27,9 +31,22 @@ export function Controls({ player, baseTempo, midi, soundOnMidi, setSoundOnMidi 
         <button className={mode === 'wait' ? 'active' : ''} onClick={() => player.setMode('wait')}>
           ⏸ Wait for me
         </button>
+        <button
+          className={mode === 'game' ? 'active' : ''}
+          onClick={() => {
+            player.setMode('game')
+            setView('falling')
+          }}
+        >
+          🎮 Game
+        </button>
       </div>
 
-      {mode === 'listen' ? (
+      <button onClick={() => setView(view === 'sheet' ? 'falling' : 'sheet')} title="Switch between sheet music and falling notes">
+        {view === 'sheet' ? '⬇ Falling notes' : '🎼 Sheet music'}
+      </button>
+
+      {mode !== 'wait' ? (
         <button className="primary play" onClick={playing ? player.pause : player.play} disabled={loading}>
           {loading ? 'Loading piano…' : playing ? '❚❚ Pause' : '▶ Play'}
         </button>

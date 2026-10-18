@@ -10,6 +10,9 @@ Learn songs key by key. The app shows the sheet music, an 88-key piano that ligh
   - **MusicXML / MIDI import**: the most accurate option (e.g. downloads from MuseScore.com).
 - **Listen mode**: real piano sound, with the sheet cursor, piano keys and step list following along. Adjustable speed (25–150%) and bar looping.
 - **Wait-for-me mode**: the app waits on each step until you play the right keys, then marks hits green and wrong keys red.
+- **Falling notes**: a Guitar Hero–style view where notes fall down each key's lane and reach the keyboard exactly when you should play them. Works in every mode.
+- **Game mode**: play your hand in time while the song (and the other hand) plays on. Notes are graded Perfect / Good / Miss, combos build a ×2–×4 multiplier, and each run ends with a score, accuracy, rank (S–D) and your best score for that song.
+- **Note editor**: fix any misread note (raise/lower, delete, change length, add) straight from the step list; the sheet redraws to match.
 - **Practice one hand or both.**
 - **Input**: USB MIDI keyboard / digital piano (Web MIDI), tapping the on-screen keys, or the computer keyboard (`A`–`;` white keys, `W E T Y U O P` black keys, `Z`/`X` change octave).
 - **AI teacher chat** that knows the song's notes and which bar you're on.
@@ -54,7 +57,7 @@ Web MIDI works in Chrome on Android. Safari on iPhone and iPad doesn't support W
 
 ```bash
 cd backend && .venv\Scripts\python -m pytest
-cd frontend && pnpm lint && pnpm build
+cd frontend && pnpm test && pnpm lint && pnpm build
 ```
 
 ## Notes and limitations

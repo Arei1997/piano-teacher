@@ -62,6 +62,20 @@ export function shiftPitch(note: NoteEvent, semitones: number): NoteEvent | null
 }
 
 export const isBlackKey = (midi: number) => BLACK.has(midi % 12)
+
+export const WHITE_KEY_COUNT = 52
+export const BLACK_KEY_WIDTH = 0.6 // in white-key widths
+
+/** Left edge of every key, in white-key widths from A0. Black keys straddle the gap between whites. */
+export const KEY_LEFT: ReadonlyMap<number, number> = (() => {
+  const positions = new Map<number, number>()
+  let white = 0
+  for (let midi = FIRST_KEY; midi <= LAST_KEY; midi++) {
+    if (isBlackKey(midi)) positions.set(midi, white - BLACK_KEY_WIDTH / 2)
+    else positions.set(midi, white++)
+  }
+  return positions
+})()
 export const midiToName = (midi: number) => `${NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`
 export const measureLength = ([num, den]: [number, number]) => (num * 4) / den
 
