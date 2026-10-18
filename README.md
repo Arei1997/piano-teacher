@@ -48,7 +48,30 @@ pnpm dev                          # http://localhost:5173
 
 Without an API key, everything except the AI features works: the demo song, file import, playback and MIDI practice.
 
-## Using it on your phone with your piano
+## Hosting it (use it anywhere as a phone app)
+
+The `Dockerfile` builds one container: FastAPI serves the API and the built frontend. Once it runs at an `https://` address, open it in Chrome on Android and tap **Install app** / **Add to Home screen** — it then runs full screen from its own icon, MIDI included.
+
+Settings (environment variables):
+
+| Variable | What it's for |
+| --- | --- |
+| `AI_API_KEY` | AI teacher, arrangements and scanning |
+| `AI_WORKSPACE_ID` | only if your key isn't tied to a workspace |
+| `APP_PASSWORD` | required login, so nobody else can use your key |
+| `SESSION_SECRET` | any long random string; keeps you logged in across restarts |
+| `DATABASE_URL` | Postgres connection string (e.g. a free [Neon](https://neon.tech) database). Without it, SQLite at `/data` (mount a volume there) |
+
+**Render** (free tier): create a Postgres database on Neon and copy its connection string, then in Render choose **New → Blueprint**, pick this repo (it reads `render.yaml`) and fill in the variables. Every push to `main` redeploys. Free instances sleep when idle, so the first visit after a while takes about a minute.
+
+Run the production build locally with Docker:
+
+```bash
+docker build -t piano-teacher .
+docker run -p 8000:8000 -e APP_PASSWORD=change-me -e SESSION_SECRET=some-long-random-string -v piano-data:/data piano-teacher
+```
+
+## Using it on your phone over home Wi-Fi (no hosting)
 
 1. Run the backend as above, then start the frontend with `pnpm dev:phone`. It prints a `Network: https://192.168.x.x:5173` address.
 2. Open that address on your phone (same Wi-Fi). Accept the self-signed certificate warning.

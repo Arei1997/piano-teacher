@@ -24,8 +24,22 @@ export interface GenerateOptions {
   instructions?: string
 }
 
+export interface Health {
+  status: string
+  ai_configured: boolean
+  login_required: boolean
+  logged_in: boolean
+}
+
+// The app shows its login screen when any request finds the session missing or expired.
+let onUnauthorized = () => {}
+export function setUnauthorizedHandler(handler: () => void) {
+  onUnauthorized = handler
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init)
+  if (response.status === 401 && path !== '/api/login') onUnauthorized()
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     const detail = body?.detail
@@ -41,7 +55,9 @@ const json = (body: unknown): RequestInit => ({
 })
 
 export const api = {
-  health: () => request<{ status: string; ai_configured: boolean }>('/api/health'),
+  health: () => request<Health>('/api/health'),
+  login: (password: string) => request<void>('/api/login', json({ password })),
+  logout: () => request<void>('/api/logout', { method: 'POST' }),
   listSongs: () => request<SongSummary[]>('/api/songs'),
   getSong: (id: number) => request<Song>(`/api/songs/${id}`),
   deleteSong: (id: number) => request<void>(`/api/songs/${id}`, { method: 'DELETE' }),
@@ -76,6 +92,7 @@ export const api = {
     signal?: AbortSignal,
   ) {
     const response = await fetch('/api/chat', { ...json(body), signal })
+    if (response.status === 401) onUnauthorized()
     if (!response.ok || !response.body) {
       const detail = (await response.json().catch(() => null))?.detail
       throw new Error(typeof detail === 'string' ? detail : `Chat failed (${response.status})`)

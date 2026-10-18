@@ -1,0 +1,21 @@
+# Render blueprint: New > Blueprint > pick this repo. Redeploys on every push to main.
+services:
+  - type: web
+    name: piano-teacher
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # Secrets are entered in the Render dashboard, never committed.
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_WORKSPACE_ID
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      # Postgres connection string (e.g. a free Neon database), so songs survive redeploys.
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
