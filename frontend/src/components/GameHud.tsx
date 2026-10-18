@@ -7,14 +7,27 @@ const GRADE_TEXT = { perfect: 'Perfect!', good: 'Good', miss: 'Miss', wrong: 'Wr
 /** Score, combo and a flash of the last judgement, shown over the falling notes. */
 export function GameHud({ game, playing }: { game: GameState; playing: boolean }) {
   const { stats, last } = game
+  const mult = multiplier(stats.combo)
+  // A new multiplier is announced for the first couple of notes after reaching it.
+  const justLevelled = mult > 1 && stats.combo % 10 < 2
   return (
     <div className="game-hud" aria-live="polite">
       <div className="hud-score">
         <b>{stats.score.toLocaleString()}</b>
-        <span>
-          {stats.combo} combo · ×{multiplier(stats.combo)}
+        <span className="hud-combo">
+          {/* Re-keyed on each hit so the bump animation replays. */}
+          <span key={stats.combo} className={stats.combo ? 'bump' : ''}>
+            {stats.combo}
+          </span>{' '}
+          combo
+          <span className={`mult mult-${mult}`}>×{mult}</span>
         </span>
       </div>
+      {justLevelled ? (
+        <div key={`m${mult}`} className="hud-milestone">
+          ×{mult} combo!
+        </div>
+      ) : null}
       {last ? (
         <div key={last.at} className={`hud-grade grade-${last.grade}`}>
           {GRADE_TEXT[last.grade]}

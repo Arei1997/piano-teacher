@@ -19,17 +19,31 @@ import { api } from './lib/api'
 import { loadPiano, noteOff, noteOn } from './lib/audio'
 import type { Song, SongSummary } from './lib/music'
 import { inHands } from './lib/music'
+import { themeById, themeStyle } from './lib/themes'
 
 type Tab = 'sheet' | 'steps' | 'chat' | 'notes'
 
 const LAST_SONG_KEY = 'pianoteacher:lastSong'
+const THEME_KEY = 'pianoteacher:theme'
 
-function readLastSong() {
+// Per-device preferences; storage can be unavailable (private mode), so failures are ignored.
+function readSetting(key: string): string | null {
   try {
-    return Number(localStorage.getItem(LAST_SONG_KEY)) || null
+    return localStorage.getItem(key)
   } catch {
     return null
   }
+}
+function writeSetting(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function readLastSong() {
+  return Number(readSetting(LAST_SONG_KEY)) || null
 }
 
 export default function App() {
@@ -45,6 +59,13 @@ export default function App() {
   const player = usePlayer(song)
   useWakeLock(Boolean(song))
   const [view, setView] = useState<View>('sheet')
+  const [themeId, setThemeIdState] = useState(() => readSetting(THEME_KEY) ?? 'neon')
+  const setThemeId = (id: string) => {
+    setThemeIdState(id)
+    writeSetting(THEME_KEY, id)
+  }
+  const theme = themeById(themeId)
+  const themed = Boolean(song) && view === 'falling'
 
   // Note corrections show instantly and save (and redraw the sheet) shortly after the last change.
   const [saving, setSaving] = useState(false)
@@ -190,6 +211,8 @@ export default function App() {
           player={player}
           view={view}
           setView={setView}
+          themeId={themeId}
+          setThemeId={setThemeId}
           baseTempo={song.tempo}
           midi={{ supported: input.midiSupported, devices: input.midiDevices, error: input.midiError, connect: input.connectMidi }}
           soundOnMidi={soundOnMidi}
@@ -263,7 +286,7 @@ export default function App() {
         </aside>
       </main>
 
-      <footer className="keyboard">
+      <footer className="keyboard" data-theme={themed ? theme.id : undefined} style={themed ? themeStyle(theme) : undefined}>
         {song ? <NowNext now={current} next={next} hands={hands} /> : null}
         {song && mode === 'game' ? <GameHud game={player.game} playing={player.playing} /> : null}
         <Piano
@@ -278,9 +301,13 @@ export default function App() {
                 measures={player.measures}
                 hands={hands}
                 bpm={player.bpm}
+                range={player.range}
                 getBeat={player.getBeat}
                 judgments={player.judgments}
+                events={player.events}
+                theme={theme}
                 smooth={mode === 'wait'}
+                countdown={mode === 'game'}
               />
             ) : undefined
           }
