@@ -1,0 +1,9 @@
+# Only source goes into the image: no dependencies, local data, secrets or hidden folders.
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.db
+**/.*
+frontend/dist
+tasks
+*.md
