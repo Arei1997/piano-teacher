@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AddSongDialog } from './components/AddSongDialog'
 import { ChatPanel } from './components/ChatPanel'
+import type { View } from './components/Controls'
 import { Controls } from './components/Controls'
+import { GameHud, GameResults } from './components/GameHud'
 import type { KeyMark } from './components/Piano'
 import { Piano } from './components/Piano'
 import { SheetMusic } from './components/SheetMusic'
 import { SongLibrary } from './components/SongLibrary'
 import type { NoteEdit } from './components/StepList'
 import { NowNext, StepList } from './components/StepList'
+import { Waterfall } from './components/Waterfall'
 import type { InputSource } from './hooks/useNoteInput'
 import { useNoteInput } from './hooks/useNoteInput'
 import { usePlayer } from './hooks/usePlayer'
@@ -41,6 +44,7 @@ export default function App() {
 
   const player = usePlayer(song)
   useWakeLock(Boolean(song))
+  const [view, setView] = useState<View>('sheet')
 
   // Note corrections show instantly and save (and redraw the sheet) shortly after the last change.
   const [saving, setSaving] = useState(false)
@@ -106,11 +110,11 @@ export default function App() {
     onNoteOff: (midi: number) => noteOff(midi),
   })
 
-  // Space toggles playback in listen mode.
+  // Space toggles playback in listen and game modes.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(e.target.tagName)
-      if (e.code !== 'Space' || typing || mode !== 'listen') return
+      if (e.code !== 'Space' || typing || mode === 'wait') return
       e.preventDefault()
       if (player.playing) player.pause()
       else player.play()
@@ -155,7 +159,7 @@ export default function App() {
   const position = current ? { measure: current.measure, beat: current.beatInMeasure + 1 } : null
 
   return (
-    <div className="app">
+    <div className="app" data-view={song ? view : 'sheet'}>
       <header className="topbar">
         <button onClick={() => setLibraryOpen(true)}>☰ Songs</button>
         <div className="song-title">
@@ -184,6 +188,8 @@ export default function App() {
       {song ? (
         <Controls
           player={player}
+          view={view}
+          setView={setView}
           baseTempo={song.tempo}
           midi={{ supported: input.midiSupported, devices: input.midiDevices, error: input.midiError, connect: input.connectMidi }}
           soundOnMidi={soundOnMidi}
@@ -259,8 +265,41 @@ export default function App() {
 
       <footer className="keyboard">
         {song ? <NowNext now={current} next={next} hands={hands} /> : null}
-        <Piano marks={marks} held={input.held} onPress={(m) => input.press(m, 0.75, 'screen')} onRelease={(m) => input.release(m, 'screen')} />
+        {song && mode === 'game' ? <GameHud game={player.game} playing={player.playing} /> : null}
+        <Piano
+          marks={marks}
+          held={input.held}
+          onPress={(m) => input.press(m, 0.75, 'screen')}
+          onRelease={(m) => input.release(m, 'screen')}
+          above={
+            song && view === 'falling' ? (
+              <Waterfall
+                notes={song.notes}
+                measures={player.measures}
+                hands={hands}
+                bpm={player.bpm}
+                getBeat={player.getBeat}
+                judgments={player.judgments}
+                smooth={mode === 'wait'}
+              />
+            ) : undefined
+          }
+        />
       </footer>
+
+      {song && mode === 'game' && player.game.finished ? (
+        <GameResults
+          key={`${song.id}-${hands}`}
+          game={player.game}
+          songId={song.id}
+          hands={hands}
+          onAgain={() => {
+            player.restart()
+            player.play()
+          }}
+          onClose={player.restart}
+        />
+      ) : null}
 
       {libraryOpen ? (
         <div className="drawer-backdrop" onClick={() => setLibraryOpen(false)}>

@@ -1,6 +1,7 @@
+import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef } from 'react'
 import type { Hand } from '../lib/music'
-import { FIRST_KEY, LAST_KEY, isBlackKey, midiToName } from '../lib/music'
+import { FIRST_KEY, KEY_LEFT, LAST_KEY, WHITE_KEY_COUNT, isBlackKey, midiToName } from '../lib/music'
 
 /** `label` is the note as spelled in the score (Ab4 rather than G#4). */
 export type KeyMark =
@@ -14,6 +15,8 @@ interface PianoProps {
   held: Set<number>
   onPress: (midi: number) => void
   onRelease: (midi: number) => void
+  /** Drawn above the keys inside the same scroller, so it stays lined up with them (falling notes). */
+  above?: ReactNode
 }
 
 const WHITE_LETTERS: Record<number, string> = { 0: 'C', 2: 'D', 4: 'E', 5: 'F', 7: 'G', 9: 'A', 11: 'B' }
@@ -40,36 +43,31 @@ function restingLabel(midi: number) {
   return pitchClass === 0 ? `C${Math.floor(midi / 12) - 1}` : WHITE_LETTERS[pitchClass]
 }
 
-const WHITE_KEYS =Array.from({ length: LAST_KEY - FIRST_KEY + 1 }, (_, i) => FIRST_KEY + i).filter((m) => !isBlackKey(m))
+const ALL_KEYS = Array.from({ length: LAST_KEY - FIRST_KEY + 1 }, (_, i) => FIRST_KEY + i)
+const WHITE_KEYS = ALL_KEYS.filter((m) => !isBlackKey(m))
+const BLACK_KEYS = ALL_KEYS.filter(isBlackKey)
 
-export function Piano({ marks, held, onPress, onRelease }: PianoProps) {
+export function Piano({ marks, held, onPress, onRelease, above }: PianoProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const pianoRef = useRef<HTMLDivElement>(null)
 
-  // Position of every key, in white-key units from the left edge.
-  const layout = useMemo(() => {
-    const positions = new Map<number, number>()
-    let white = 0
-    for (let midi = FIRST_KEY; midi <= LAST_KEY; midi++) {
-      if (isBlackKey(midi)) positions.set(midi, white - 0.3)
-      else positions.set(midi, white++)
-    }
-    return positions
-  }, [])
-
-  // On narrow screens the keyboard scrolls; keep the keys to play in view.
-  const target = useMemo(() => {
+  // On narrow screens the keyboard scrolls; keep every key to play in view.
+  const span = useMemo(() => {
     const playing = [...marks].filter(([, m]) => m.kind === 'play').map(([midi]) => midi)
-    return playing.length ? (Math.min(...playing) + Math.max(...playing)) / 2 : null
+    return playing.length ? { low: Math.min(...playing), high: Math.max(...playing) } : null
   }, [marks])
   useEffect(() => {
     const el = scrollRef.current
-    const piano = el?.firstElementChild as HTMLElement | null
-    if (!el || !piano || target === null || el.scrollWidth <= el.clientWidth) return
-    const x = piano.offsetLeft + ((layout.get(Math.round(target)) ?? 0) / WHITE_KEYS.length) * piano.offsetWidth
-    if (x < el.scrollLeft + el.clientWidth * 0.2 || x > el.scrollLeft + el.clientWidth * 0.8) {
-      el.scrollTo({ left: x - el.clientWidth / 2, behavior: 'smooth' })
+    const piano = pianoRef.current
+    if (!el || !piano || !span || el.scrollWidth <= el.clientWidth) return
+    const keyWidth = piano.offsetWidth / WHITE_KEY_COUNT
+    const left = piano.offsetLeft + (KEY_LEFT.get(span.low) ?? 0) * keyWidth
+    const right = piano.offsetLeft + ((KEY_LEFT.get(span.high) ?? 0) + 1) * keyWidth
+    const margin = keyWidth * 1.5
+    if (left < el.scrollLeft + margin || right > el.scrollLeft + el.clientWidth - margin) {
+      el.scrollTo({ left: (left + right) / 2 - el.clientWidth / 2, behavior: 'smooth' })
     }
-  }, [target, layout])
+  }, [span])
 
   const pointer = (midi: number) => ({
     onPointerDown: (e: React.PointerEvent) => {
@@ -91,7 +89,7 @@ export function Piano({ marks, held, onPress, onRelease }: PianoProps) {
       if (mark.kind === 'play' && mark.dim) classes.push('dim')
     }
     if (held.has(midi)) classes.push('held')
-    const left = layout.get(midi)!
+    const left = KEY_LEFT.get(midi)!
     // Keys to play show the full name as spelled in the score (e.g. Ab4).
     const scoreLabel = mark && 'label' in mark ? mark.label : null
     const name = scoreLabel ?? midiToName(midi)
@@ -114,9 +112,10 @@ export function Piano({ marks, held, onPress, onRelease }: PianoProps) {
 
   return (
     <div className="piano-scroll" ref={scrollRef}>
-      <div className="piano" role="group" aria-label="88-key piano">
+      {above}
+      <div className="piano" role="group" aria-label="88-key piano" ref={pianoRef}>
         {WHITE_KEYS.map(renderKey)}
-        {[...layout.keys()].filter(isBlackKey).map(renderKey)}
+        {BLACK_KEYS.map(renderKey)}
       </div>
     </div>
   )
