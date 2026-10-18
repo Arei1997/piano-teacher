@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { HandFilter, NoteEvent, Step } from '../lib/music'
 import { chordsInStep, describeDuration, formatBeats, midiToName, shiftPitch } from '../lib/music'
+import { Icon } from './Icon'
 
 /** A change to the song's notes: replace (or delete, with null) existing notes, and add new ones. */
 export interface NoteEdit {
@@ -92,7 +93,7 @@ export function StepList({ steps, current, hands, onSelect, onEdit, saving }: St
     <>
       <div className="step-toolbar">
         <button className={editing ? 'active' : ''} onClick={() => (setEditing(!editing), setSelected(null))}>
-          {editing ? '✓ Done editing' : '✎ Edit notes'}
+          {editing ? 'Done editing' : 'Edit notes'}
         </button>
         <span className="muted">{saving ? 'Saving…' : editing ? 'Tap a note to fix it' : ''}</span>
       </div>
@@ -135,13 +136,13 @@ function ChordEditor({ notes, duration, onEdit, onLengthChanged, onClose }: Chor
         <div className="edit-note" key={`${note.midi}${note.pitch}`}>
           <b>{note.pitch}</b>
           <button onClick={() => shift(note, -1)} aria-label={`Lower ${note.pitch} a semitone`}>
-            ▼
+            <Icon name="down" />
           </button>
           <button onClick={() => shift(note, 1)} aria-label={`Raise ${note.pitch} a semitone`}>
-            ▲
+            <Icon name="up" />
           </button>
           <button onClick={() => remove(note)} aria-label={`Delete ${note.pitch}`}>
-            ✕
+            <Icon name="close" />
           </button>
         </div>
       ))}
