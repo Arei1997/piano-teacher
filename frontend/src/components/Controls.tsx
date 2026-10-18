@@ -1,6 +1,7 @@
 import type { Player } from '../hooks/usePlayer'
 import type { HandFilter } from '../lib/music'
 import { THEMES } from '../lib/themes'
+import { Icon } from './Icon'
 
 export type View = 'sheet' | 'falling'
 
@@ -29,10 +30,10 @@ export function Controls({ player, view, setView, themeId, setThemeId, baseTempo
     <div className="controls">
       <div className="segmented" role="group" aria-label="Practice mode">
         <button className={mode === 'listen' ? 'active' : ''} onClick={() => player.setMode('listen')}>
-          ▶ Listen
+          Listen
         </button>
         <button className={mode === 'wait' ? 'active' : ''} onClick={() => player.setMode('wait')}>
-          ⏸ Wait for me
+          Wait for me
         </button>
         <button
           className={mode === 'game' ? 'active' : ''}
@@ -41,7 +42,7 @@ export function Controls({ player, view, setView, themeId, setThemeId, baseTempo
             setView('falling')
           }}
         >
-          🎮 Game
+          Game
         </button>
         <button
           className={mode === 'train' ? 'active' : ''}
@@ -54,7 +55,7 @@ export function Controls({ player, view, setView, themeId, setThemeId, baseTempo
             }
           }}
         >
-          🏋 Train
+          Train
         </button>
       </div>
 
@@ -69,7 +70,7 @@ export function Controls({ player, view, setView, themeId, setThemeId, baseTempo
             value={player.trainSettings.startPct}
             onChange={(e) => player.setTrainSettings({ ...player.trainSettings, startPct: Number(e.target.value) || 20 })}
           />
-          % →
+          % to
           <input
             type="number"
             min={player.trainSettings.startPct}
@@ -83,7 +84,7 @@ export function Controls({ player, view, setView, themeId, setThemeId, baseTempo
       ) : null}
 
       <button onClick={() => setView(view === 'sheet' ? 'falling' : 'sheet')} title="Switch between sheet music and falling notes">
-        {view === 'sheet' ? '⬇ Falling notes' : '🎼 Sheet music'}
+        {view === 'sheet' ? 'Falling notes' : 'Sheet music'}
       </button>
 
       {view === 'falling' ? (
@@ -101,11 +102,17 @@ export function Controls({ player, view, setView, themeId, setThemeId, baseTempo
 
       {mode !== 'wait' ? (
         <button className="primary play" onClick={playing ? player.pause : player.play} disabled={loading}>
-          {loading ? 'Loading piano…' : playing ? '❚❚ Pause' : '▶ Play'}
+          {loading ? (
+            'Loading piano…'
+          ) : (
+            <>
+              <Icon name={playing ? 'pause' : 'play'} /> {playing ? 'Pause' : 'Play'}
+            </>
+          )}
         </button>
       ) : null}
       <button onClick={player.restart} title="Back to the start">
-        ⟲ Restart
+        Restart
       </button>
 
       <div className="segmented" role="group" aria-label="Hands">
@@ -156,7 +163,7 @@ export function Controls({ player, view, setView, themeId, setThemeId, baseTempo
       <div className="midi">
         {midi.devices.length ? (
           <>
-            <span className="ok">🎹 {midi.devices.join(', ')}</span>
+            <span className="ok connected">{midi.devices.join(', ')}</span>
             <label className="inline">
               <input type="checkbox" checked={soundOnMidi} onChange={(e) => setSoundOnMidi(e.target.checked)} />
               App sound for MIDI

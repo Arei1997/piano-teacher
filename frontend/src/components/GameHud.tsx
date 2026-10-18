@@ -51,7 +51,7 @@ export function TrainHud({ progress, settings, playing }: { progress: TrainProgr
         <b>Rep {progress.rep + (playing ? 1 : 0)}</b>
         {last !== null ? (
           <span className={last >= settings.threshold ? 'ok' : 'bad'}>
-            last {Math.round(last * 100)}% {last >= settings.threshold ? '✓' : '✗'}
+            last {Math.round(last * 100)}% · {last >= settings.threshold ? 'clean' : 'again'}
           </span>
         ) : (
           <span className="muted">clean = {Math.round(settings.threshold * 100)}%+</span>
@@ -99,15 +99,14 @@ export function MasteredDialog({ loop, firstMeasure, lastMeasure, settings, onCh
   return (
     <div className="dialog-backdrop">
       <div className="dialog results" role="dialog" aria-modal="true">
-        <div className="rank rank-S">★</div>
-        <h2>Mastered!</h2>
+        <h2 className="mastered-title">Mastered</h2>
         <p className="muted">
           {loop ? label({ from, to }) : 'The whole piece'}, {settings.repsNeeded} clean reps in a row at {settings.targetPct}% speed.
         </p>
         <div className="mastered-actions">
           {next ? (
             <button className="primary" onClick={() => onChunk(next)}>
-              Next: {label(next)} →
+              Next: {label(next)}
             </button>
           ) : null}
           {joined ? <button onClick={() => onChunk(joined)}>Join up: {label(joined)}</button> : null}

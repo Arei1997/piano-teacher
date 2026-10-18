@@ -118,6 +118,15 @@ input[type='number'] {
   color: var(--muted);
   font-size: 0.9em;
 }
+.icon-svg {
+  vertical-align: -3px;
+  flex-shrink: 0;
+}
+button.icon,
+.edit-note button {
+  display: inline-grid;
+  place-items: center;
+}
 .error {
   color: var(--wrong);
 }
@@ -201,6 +210,17 @@ kbd {
 .midi .ok {
   color: var(--correct);
   font-size: 0.92em;
+}
+/* A green "connected" dot before the MIDI keyboard's name. */
+.midi .connected::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--correct);
+  box-shadow: 0 0 6px var(--correct);
 }
 
 .segmented {
@@ -323,6 +343,59 @@ kbd {
   /* Bigger keys to tap; the keyboard scrolls to follow the music. */
   :root {
     --white-key: 30px;
+  }
+}
+
+/* Phone turned sideways: little height, lots of width. Squeeze the chrome onto single
+   rows and use smaller keys, so about three octaves are in view instead of one and a half. */
+@media (orientation: landscape) and (max-height: 540px) {
+  :root {
+    --white-key: 24px;
+  }
+  .topbar {
+    padding: 4px 10px;
+    gap: 8px;
+  }
+  .topbar button {
+    padding: 3px 10px;
+  }
+  .song-title .muted {
+    display: none;
+  }
+  .controls {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 4px 10px;
+    gap: 8px;
+    font-size: 0.88em;
+    scrollbar-width: none;
+  }
+  .controls > * {
+    flex-shrink: 0;
+  }
+  .controls button {
+    padding: 3px 9px;
+  }
+  .main-tabs button {
+    padding: 3px 10px;
+  }
+  .now-next {
+    padding: 2px 10px;
+  }
+  .piano {
+    height: clamp(72px, 24vh, 110px);
+  }
+  .game-hud {
+    inset: 34px 0 clamp(72px, 24vh, 110px) 0;
+  }
+  .train-hud {
+    top: 34px;
+  }
+  .waterfall {
+    min-height: 90px;
+  }
+  .hud-milestone {
+    font-size: 1.8em;
   }
 }
 
@@ -489,6 +562,35 @@ kbd {
 .keyboard {
   border-top: 1px solid var(--border);
   background: var(--surface);
+}
+.keyboard-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+}
+.keyboard-bar .now-next {
+  flex: 1;
+  min-width: 0;
+}
+.key-size {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.key-size button {
+  padding: 2px 10px;
+  font-size: 0.9em;
+}
+.key-size button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.keyboard[data-theme]:not([data-theme='classic']) .key-size button:not(.active) {
+  background: #1c1c28;
+  border-color: #333;
+  color: #e5e7eb;
 }
 .now-next {
   display: flex;
@@ -891,6 +993,11 @@ kbd {
   background: #22c55e;
   border-color: #22c55e;
   box-shadow: 0 0 8px #22c55e;
+}
+.mastered-title {
+  font-size: 1.8em;
+  margin: 6px 0 2px;
+  color: #16a34a;
 }
 .mastered-actions {
   display: flex;

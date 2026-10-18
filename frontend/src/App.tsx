@@ -4,6 +4,7 @@ import { ChatPanel } from './components/ChatPanel'
 import type { View } from './components/Controls'
 import { Controls } from './components/Controls'
 import { GameHud, GameResults, MasteredDialog, TrainHud } from './components/GameHud'
+import { KeySize } from './components/KeySize'
 import { PracticePanel } from './components/PracticePanel'
 import type { KeyMark } from './components/Piano'
 import { Piano } from './components/Piano'
@@ -21,12 +22,15 @@ import { api } from './lib/api'
 import { loadPiano, noteOff, noteOn } from './lib/audio'
 import type { Song, SongSummary } from './lib/music'
 import { inHands } from './lib/music'
+import type { KeySizeSetting } from './lib/keySize'
+import { keySizeStyle } from './lib/keySize'
 import { themeById, themeStyle } from './lib/themes'
 
 type Tab = 'sheet' | 'steps' | 'chat' | 'notes'
 
 const LAST_SONG_KEY = 'pianoteacher:lastSong'
 const THEME_KEY = 'pianoteacher:theme'
+const KEY_SIZE_KEY = 'pianoteacher:keySize'
 
 // Per-device preferences; storage can be unavailable (private mode), so failures are ignored.
 function readSetting(key: string): string | null {
@@ -70,6 +74,15 @@ export default function App() {
     writeSetting(THEME_KEY, id)
   }
   const theme = themeById(themeId)
+  const [keySize, setKeySizeState] = useState<KeySizeSetting>(() => {
+    const saved = readSetting(KEY_SIZE_KEY)
+    if (saved === 'fit') return 'fit'
+    return Number(saved) || 'auto' // a saved width in px, else follow the screen
+  })
+  const setKeySize = (size: KeySizeSetting) => {
+    setKeySizeState(size)
+    writeSetting(KEY_SIZE_KEY, String(size))
+  }
   const themed = Boolean(song) && view === 'falling'
 
   // Note corrections show instantly and save (and redraw the sheet) shortly after the last change.
@@ -205,8 +218,8 @@ export default function App() {
   return (
     <div className="app" data-view={song ? view : 'sheet'}>
       <header className="topbar">
-        <button onClick={() => setLibraryOpen(true)}>☰ Songs</button>
-        <button onClick={() => setPracticeOpen(true)}>🏋 Practice</button>
+        <button onClick={() => setLibraryOpen(true)}>Songs</button>
+        <button onClick={() => setPracticeOpen(true)}>Practice</button>
         <div className="song-title">
           {song ? (
             <>
@@ -283,7 +296,7 @@ export default function App() {
           <div className="side steps-side">
             {mode === 'wait' && wait.finished ? (
               <div className="finished">
-                🎉 Nice! You played it all. <button onClick={player.restart}>Again</button>
+                Nice, you played it all. <button onClick={player.restart}>Again</button>
               </div>
             ) : null}
             <StepList steps={steps} current={stepIndex} hands={hands} onSelect={player.seekToStep} onEdit={editNotes} saving={saving} />
@@ -310,8 +323,15 @@ export default function App() {
         </aside>
       </main>
 
-      <footer className="keyboard" data-theme={themed ? theme.id : undefined} style={themed ? themeStyle(theme) : undefined}>
-        {song ? <NowNext now={current} next={next} hands={hands} /> : null}
+      <footer
+        className="keyboard"
+        data-theme={themed ? theme.id : undefined}
+        style={{ ...(themed ? themeStyle(theme) : undefined), ...keySizeStyle(keySize) }}
+      >
+        <div className="keyboard-bar">
+          {song ? <NowNext now={current} next={next} hands={hands} /> : <span />}
+          <KeySize setting={keySize} onChange={setKeySize} />
+        </div>
         {song && (mode === 'game' || mode === 'train') ? <GameHud game={player.game} playing={player.playing} /> : null}
         {song && mode === 'train' ? <TrainHud progress={player.train} settings={player.trainSettings} playing={player.playing} /> : null}
         <Piano

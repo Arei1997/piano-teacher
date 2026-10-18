@@ -1,4 +1,5 @@
 import type { SongSummary } from '../lib/music'
+import { Icon } from './Icon'
 
 const SOURCE_LABEL = { import: 'File', ai: 'AI', scan: 'Scan', exercise: 'Exercise' } as const
 
@@ -30,7 +31,7 @@ export function SongLibrary({ songs, currentId, onSelect, onDelete, onAdd }: Son
               aria-label={`Delete ${song.title}`}
               onClick={() => confirm(`Delete “${song.title}”?`) && onDelete(song.id)}
             >
-              🗑
+              <Icon name="trash" />
             </button>
           </li>
         ))}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { GenerateOptions } from '../lib/api'
 import { api } from '../lib/api'
 import type { Song } from '../lib/music'
+import { Icon } from './Icon'
 
 type Tab = 'generate' | 'scan' | 'import'
 
@@ -41,7 +42,7 @@ export function AddSongDialog({ aiReady, onClose, onAdded }: AddSongDialogProps)
         <header>
           <h2>Add a song</h2>
           <button className="icon" onClick={onClose} disabled={busy} aria-label="Close">
-            ✕
+            <Icon name="close" size={18} />
           </button>
         </header>
         <nav className="tabs">
