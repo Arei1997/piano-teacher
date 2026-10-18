@@ -43,7 +43,44 @@ export function Controls({ player, view, setView, themeId, setThemeId, baseTempo
         >
           🎮 Game
         </button>
+        <button
+          className={mode === 'train' ? 'active' : ''}
+          title="Loop a short passage, speeding up with each clean repetition"
+          onClick={() => {
+            player.setMode('train')
+            // Long pieces are learnt in small chunks: start with the first two bars.
+            if (!player.loop && player.lastMeasure - player.firstMeasure >= 8) {
+              player.setLoop({ from: player.firstMeasure, to: player.firstMeasure + 1 })
+            }
+          }}
+        >
+          🏋 Train
+        </button>
       </div>
+
+      {mode === 'train' ? (
+        <label className="inline ladder-inputs" title="The speed ladder: where each run starts and the speed to master it at">
+          Ladder
+          <input
+            type="number"
+            min={20}
+            max={player.trainSettings.targetPct}
+            step={5}
+            value={player.trainSettings.startPct}
+            onChange={(e) => player.setTrainSettings({ ...player.trainSettings, startPct: Number(e.target.value) || 20 })}
+          />
+          % →
+          <input
+            type="number"
+            min={player.trainSettings.startPct}
+            max={150}
+            step={5}
+            value={player.trainSettings.targetPct}
+            onChange={(e) => player.setTrainSettings({ ...player.trainSettings, targetPct: Number(e.target.value) || 100 })}
+          />
+          %
+        </label>
+      ) : null}
 
       <button onClick={() => setView(view === 'sheet' ? 'falling' : 'sheet')} title="Switch between sheet music and falling notes">
         {view === 'sheet' ? '⬇ Falling notes' : '🎼 Sheet music'}

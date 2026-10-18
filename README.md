@@ -12,6 +12,9 @@ Learn songs key by key. The app shows the sheet music, an 88-key piano that ligh
 - **Wait-for-me mode**: the app waits on each step until you play the right keys, then marks hits green and wrong keys red.
 - **Falling notes**: a Guitar Hero–style view where notes fall down each key's lane and reach the keyboard exactly when you should play them. Works in every mode.
 - **Game mode**: play your hand in time while the song (and the other hand) plays on. Notes are graded Perfect / Good / Miss, combos build a ×2–×4 multiplier, and each run ends with a score, accuracy, rank (S–D) and your best score for that song.
+- **Train mode (muscle memory)**: loops a short passage starting slow (60%); every clean repetition (90%+, wrong notes count) climbs the speed ladder, a sloppy one drops back. Three clean reps in a row at full speed masters the passage, then move on to the next bars or join them up.
+- **Practice section**: generated exercises in any key with standard fingerings — five-finger patterns, major/minor scales (1–2 octaves), arpeggios, Hanon No. 1, I–IV–V–I chord progressions and a 12-bar blues left hand — plus a 10-minute warm-up routine.
+- **Particle effects & themes**: hit sparks, lane beams, combo milestones and a countdown, in Neon, Sunset, Ocean, Forest, High-contrast or Classic.
 - **Note editor**: fix any misread note (raise/lower, delete, change length, add) straight from the step list; the sheet redraws to match.
 - **Practice one hand or both.**
 - **Input**: USB MIDI keyboard / digital piano (Web MIDI), tapping the on-screen keys, or the computer keyboard (`A`–`;` white keys, `W E T Y U O P` black keys, `Z`/`X` change octave).

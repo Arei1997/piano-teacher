@@ -1,6 +1,6 @@
 import type { SongSummary } from '../lib/music'
 
-const SOURCE_LABEL = { import: 'File', ai: 'AI', scan: 'Scan' } as const
+const SOURCE_LABEL = { import: 'File', ai: 'AI', scan: 'Scan', exercise: 'Exercise' } as const
 
 interface SongLibraryProps {
   songs: SongSummary[]

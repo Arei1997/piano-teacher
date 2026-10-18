@@ -3,7 +3,8 @@ import { AddSongDialog } from './components/AddSongDialog'
 import { ChatPanel } from './components/ChatPanel'
 import type { View } from './components/Controls'
 import { Controls } from './components/Controls'
-import { GameHud, GameResults } from './components/GameHud'
+import { GameHud, GameResults, MasteredDialog, TrainHud } from './components/GameHud'
+import { PracticePanel } from './components/PracticePanel'
 import type { KeyMark } from './components/Piano'
 import { Piano } from './components/Piano'
 import { SheetMusic } from './components/SheetMusic'
@@ -15,6 +16,7 @@ import type { InputSource } from './hooks/useNoteInput'
 import { useNoteInput } from './hooks/useNoteInput'
 import { usePlayer } from './hooks/usePlayer'
 import { useWakeLock } from './hooks/useWakeLock'
+import type { ExerciseOptions } from './lib/api'
 import { api } from './lib/api'
 import { loadPiano, noteOff, noteOn } from './lib/audio'
 import type { Song, SongSummary } from './lib/music'
@@ -51,6 +53,9 @@ export default function App() {
   const [song, setSong] = useState<Song | null>(null)
   const [aiReady, setAiReady] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
+  const [practiceOpen, setPracticeOpen] = useState(false)
+  const [practiceBusy, setPracticeBusy] = useState(false)
+  const [practiceError, setPracticeError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [tab, setTab] = useState<Tab>('sheet')
   const [soundOnMidi, setSoundOnMidi] = useState(false)
@@ -96,6 +101,24 @@ export default function App() {
     }, 700)
   }
   const { steps, stepIndex, mode, hands, wait } = player
+
+  /** Open an exercise from the Practice panel straight into Train mode, with matching hands. */
+  async function openExercise(options: ExerciseOptions) {
+    setPracticeBusy(true)
+    setPracticeError(null)
+    try {
+      const exercise = await api.openExercise(options)
+      setSong(exercise)
+      player.setHands(options.hands === 'both' ? 'both' : options.hands === 'right' ? 'R' : 'L')
+      player.setLoop(null)
+      player.setMode('train')
+      setPracticeOpen(false)
+    } catch (e) {
+      setPracticeError((e as Error).message)
+    } finally {
+      setPracticeBusy(false)
+    }
+  }
 
   const openSong = useCallback(async (id: number) => {
     try {
@@ -183,6 +206,7 @@ export default function App() {
     <div className="app" data-view={song ? view : 'sheet'}>
       <header className="topbar">
         <button onClick={() => setLibraryOpen(true)}>☰ Songs</button>
+        <button onClick={() => setPracticeOpen(true)}>🏋 Practice</button>
         <div className="song-title">
           {song ? (
             <>
@@ -288,7 +312,8 @@ export default function App() {
 
       <footer className="keyboard" data-theme={themed ? theme.id : undefined} style={themed ? themeStyle(theme) : undefined}>
         {song ? <NowNext now={current} next={next} hands={hands} /> : null}
-        {song && mode === 'game' ? <GameHud game={player.game} playing={player.playing} /> : null}
+        {song && (mode === 'game' || mode === 'train') ? <GameHud game={player.game} playing={player.playing} /> : null}
+        {song && mode === 'train' ? <TrainHud progress={player.train} settings={player.trainSettings} playing={player.playing} /> : null}
         <Piano
           marks={marks}
           held={input.held}
@@ -307,7 +332,8 @@ export default function App() {
                 events={player.events}
                 theme={theme}
                 smooth={mode === 'wait'}
-                countdown={mode === 'game'}
+                countdown={mode === 'game' || mode === 'train'}
+                looping={mode === 'train' || Boolean(player.loop)}
               />
             ) : undefined
           }
@@ -326,6 +352,30 @@ export default function App() {
           }}
           onClose={player.restart}
         />
+      ) : null}
+
+      {song && mode === 'train' && player.train.mastered ? (
+        <MasteredDialog
+          loop={player.loop}
+          firstMeasure={player.firstMeasure}
+          lastMeasure={player.lastMeasure}
+          settings={player.trainSettings}
+          onChunk={(next) => player.setLoop(next)}
+          onFaster={() => {
+            player.setTrainSettings({ ...player.trainSettings, targetPct: player.trainSettings.targetPct + 10 })
+            player.restart()
+          }}
+          onAgain={player.restart}
+          onClose={player.restart}
+        />
+      ) : null}
+
+      {practiceOpen ? (
+        <div className="drawer-backdrop" onClick={() => setPracticeOpen(false)}>
+          <div className="drawer practice-drawer" onClick={(e) => e.stopPropagation()}>
+            <PracticePanel busy={practiceBusy} error={practiceError} onOpen={openExercise} />
+          </div>
+        </div>
       ) : null}
 
       {libraryOpen ? (

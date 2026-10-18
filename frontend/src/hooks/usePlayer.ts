@@ -1,13 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as Tone from 'tone'
 import { loadPiano, playNote, silence } from '../lib/audio'
-import type { GameStats, Grade, Target } from '../lib/game'
-import { WINDOW_SECONDS, applyGrade, applyWrong, createTargets, emptyStats, judgePress, multiplier, sweepMisses } from '../lib/game'
+import type { GameStats, Grade, Target, TrainProgress, TrainSettings } from '../lib/game'
+import {
+  DEFAULT_TRAIN,
+  WINDOW_SECONDS,
+  applyGrade,
+  applyWrong,
+  createTargets,
+  emptyStats,
+  finishRep,
+  judgePress,
+  multiplier,
+  repAccuracy,
+  startTraining,
+  sweepMisses,
+} from '../lib/game'
 import { GameEvents } from '../lib/effects'
 import type { HandFilter, NoteEvent, Song, Step } from '../lib/music'
 import { barlines, buildSteps, inHands, stepAt } from '../lib/music'
 
-export type Mode = 'listen' | 'wait' | 'game'
+export type Mode = 'listen' | 'wait' | 'game' | 'train'
+/** Modes where the song plays on and the student's notes are scored. */
+const isScored = (mode: Mode) => mode === 'game' || mode === 'train'
 export interface LoopRange {
   from: number // first measure, inclusive
   to: number // last measure, inclusive
@@ -56,6 +71,8 @@ function isPracticeStep(step: Step, hands: HandFilter, range: { start: number; e
  * - wait: nothing plays; the student presses the current step's keys to move on.
  * - game: the song plays on, the student plays their hand in time and is scored;
  *   the other hand (if only one is practised) plays as accompaniment.
+ * - train: game scoring on a looped passage; each repetition moves the tempo up the
+ *   speed ladder (or back down) until the passage is mastered at full speed.
  */
 export function usePlayer(song: Song | null) {
   const steps = useMemo(() => (song ? buildSteps(song) : []), [song])
@@ -75,6 +92,8 @@ export function usePlayer(song: Song | null) {
   const [wait, setWait] = useState<WaitState>(EMPTY_WAIT)
   const [game, setGame] = useState<GameState>(NEW_GAME)
   const [events] = useState(() => new GameEvents())
+  const [trainSettings, setTrainSettings] = useState<TrainSettings>(DEFAULT_TRAIN)
+  const [train, setTrain] = useState<TrainProgress>(() => startTraining(DEFAULT_TRAIN))
   const bpm = song ? (song.tempo * tempoPct) / 100 : 120
 
   const range = useMemo(() => {
@@ -84,9 +103,9 @@ export function usePlayer(song: Song | null) {
   }, [loop, measures, songEnd])
 
   // Refs let input callbacks and the animation loop read the latest values.
-  const live = useRef({ steps, hands, range, loop, mode, bpm, waitIndex: wait.index })
+  const live = useRef({ steps, hands, range, loop, mode, bpm, waitIndex: wait.index, trainSettings })
   useEffect(() => {
-    live.current = { steps, hands, range, loop, mode, bpm, waitIndex: wait.index }
+    live.current = { steps, hands, range, loop, mode, bpm, waitIndex: wait.index, trainSettings }
   })
   const partRef = useRef<Tone.Part | null>(null)
   const frameRef = useRef(0)
@@ -95,6 +114,8 @@ export function usePlayer(song: Song | null) {
   const judgments = useRef(new Map<NoteEvent, Grade>()) // read by the falling-notes view each frame
   const gameRef = useRef<GameState>(NEW_GAME)
   const waitRef = useRef<WaitState>(EMPTY_WAIT)
+  const trainRef = useRef<TrainProgress>(train)
+  const repStats = useRef<GameStats>(emptyStats()) // the current training repetition only
 
   // Game and wait state live in refs too, so key presses can read and update them
   // synchronously (and fire effects exactly once) without waiting for a re-render.
@@ -106,10 +127,15 @@ export function usePlayer(song: Song | null) {
     waitRef.current = next
     setWait(next)
   }, [])
+  const updateTrain = useCallback((next: TrainProgress) => {
+    trainRef.current = next
+    setTrain(next)
+  }, [])
 
   /** Score one judgement, and celebrate when the combo multiplier goes up. */
   const scoreGrade = useCallback(
     (grade: Grade) => {
+      repStats.current = applyGrade(repStats.current, grade)
       const before = gameRef.current.stats
       const stats = applyGrade(before, grade)
       updateGame({ ...gameRef.current, stats, last: { grade, at: performance.now() } })
@@ -148,12 +174,17 @@ export function usePlayer(song: Song | null) {
     }
     stopTransport()
 
-    const isGame = currentMode === 'game'
-    const { hands, range, loop } = live.current
+    const isGame = isScored(currentMode)
+    const isTrain = currentMode === 'train'
+    const { hands, range, loop, trainSettings } = live.current
     const transport = Tone.getTransport()
     const ppq = transport.PPQ
     const at = (beat: number) => `${Math.round((beat + LEAD_BEATS) * ppq)}i`
-    transport.bpm.value = (song.tempo * tempoPct) / 100
+    const freshRun = !(gameRef.current.started && !gameRef.current.finished)
+    // A new training run starts at the bottom of the speed ladder.
+    const startPct = isTrain && freshRun ? trainSettings.startPct : tempoPct
+    if (startPct !== tempoPct) setTempoPct(startPct)
+    transport.bpm.value = (song.tempo * startPct) / 100
 
     // In a game the student plays their own hand; only the other hand is played for them.
     const audible = isGame ? song.notes.filter((n) => !inHands(n, hands)) : song.notes
@@ -164,19 +195,22 @@ export function usePlayer(song: Song | null) {
     part.start(0)
     partRef.current = part
 
-    transport.loop = Boolean(loop)
+    // Training always repeats its passage.
+    const looping = isTrain || Boolean(loop)
+    transport.loop = looping
     transport.loopStart = at(range.start)
     transport.loopEnd = at(range.end)
 
     let startBeat: number
     if (isGame) {
-      const resuming = gameRef.current.started && !gameRef.current.finished
-      if (resuming) {
+      if (!freshRun) {
         startBeat = beatRef.current
       } else {
         targetsRef.current = createTargets(song.notes, hands, range)
         judgments.current.clear()
+        repStats.current = emptyStats()
         updateGame({ ...NEW_GAME, stats: emptyStats(), started: true })
+        if (isTrain) updateTrain(startTraining(trainSettings))
         startBeat = range.start - leadInBeats(transport.bpm.value)
       }
     } else {
@@ -195,8 +229,29 @@ export function usePlayer(song: Song | null) {
       const { steps, loop, range } = live.current
       const secondsPerBeat = 60 / transport.bpm.value
 
-      // A loop wrapped round: start a fresh pass over the same notes.
       if (isGame && beat < lastBeat - 0.5) {
+        // Going backwards means either the loop wrapped round, or the clock hasn't caught up
+        // yet just after starting (it briefly reports its old position). Skip the latter.
+        if (!(looping && lastBeat > range.end - 1)) {
+          frameRef.current = requestAnimationFrame(tick)
+          return
+        }
+        // The loop wrapped: score what's left of the pass, then start a fresh one.
+        sweepMisses(targetsRef.current, Infinity, secondsPerBeat).forEach(() => scoreGrade('miss'))
+        if (isTrain) {
+          const settings = live.current.trainSettings
+          const progress = finishRep(trainRef.current, repStats.current, settings)
+          events.emit({ type: 'rep', clean: repAccuracy(repStats.current) >= settings.threshold })
+          updateTrain(progress)
+          repStats.current = emptyStats()
+          setTempoPct(progress.tempoPct)
+          transport.bpm.value = (song.tempo * progress.tempoPct) / 100
+          if (progress.mastered) {
+            stopTransport()
+            updateGame({ ...gameRef.current, finished: true })
+            return
+          }
+        }
         targetsRef.current.forEach((t) => (t.grade = null))
         judgments.current.clear()
       }
@@ -205,7 +260,7 @@ export function usePlayer(song: Song | null) {
 
       // Keep going a moment past the end so the last notes can still be hit or missed.
       const tail = isGame ? WINDOW_SECONDS.good / secondsPerBeat : 0
-      if (!loop && beat >= range.end + tail) {
+      if (!(isTrain || loop) && beat >= range.end + tail) {
         stopTransport()
         if (isGame) {
           for (const t of sweepMisses(targetsRef.current, Infinity, secondsPerBeat)) {
@@ -242,7 +297,7 @@ export function usePlayer(song: Song | null) {
       frameRef.current = requestAnimationFrame(tick)
     }
     frameRef.current = requestAnimationFrame(tick)
-  }, [song, tempoPct, listenStep, stopTransport, firstPracticeStep, updateGame, scoreGrade, events])
+  }, [song, tempoPct, listenStep, stopTransport, firstPracticeStep, updateGame, updateTrain, scoreGrade, events])
 
   const pause = useCallback(() => {
     cancelAnimationFrame(frameRef.current)
@@ -275,7 +330,7 @@ export function usePlayer(song: Song | null) {
         return
       }
 
-      if (currentMode === 'game') {
+      if (isScored(currentMode)) {
         if (Tone.getTransport().state !== 'started' || !gameRef.current.started) return
         const target = judgePress(targetsRef.current, midi, transportBeat(), 60 / Tone.getTransport().bpm.value)
         if (target?.grade && target.grade !== 'miss') {
@@ -285,6 +340,7 @@ export function usePlayer(song: Song | null) {
           events.emit({ type: 'hit', midi, grade: target.grade })
         } else {
           const current = gameRef.current
+          repStats.current = applyWrong(repStats.current)
           updateGame({ ...current, stats: applyWrong(current.stats), last: { grade: 'wrong', at: performance.now() } })
           events.emit({ type: 'press', midi, ok: false })
         }
@@ -339,7 +395,7 @@ export function usePlayer(song: Song | null) {
   const seekToStep = useCallback(
     (index: number) => {
       const step = live.current.steps[index]
-      if (!step || live.current.mode === 'game') return
+      if (!step || isScored(live.current.mode)) return
       if (live.current.mode === 'wait') {
         resetWait(step.start)
         return
@@ -360,9 +416,11 @@ export function usePlayer(song: Song | null) {
     targetsRef.current = []
     judgments.current.clear()
     updateGame(NEW_GAME)
+    updateTrain(startTraining(live.current.trainSettings))
+    repStats.current = emptyStats()
     // In a game the first notes wait above the keys, ready to fall.
-    beatRef.current = live.current.mode === 'game' ? start - leadInBeats(live.current.bpm) : start
-  }, [stopTransport, firstPracticeStep, resetWait, updateGame])
+    beatRef.current = isScored(live.current.mode) ? start - leadInBeats(live.current.bpm) : start
+  }, [stopTransport, firstPracticeStep, resetWait, updateGame, updateTrain])
 
   // New song, mode, hands or loop: stop and go back to the start of the practice range.
   // Keyed on the song's id so correcting a note doesn't throw the student back to bar 1.
@@ -402,6 +460,9 @@ export function usePlayer(song: Song | null) {
     sounding,
     wait: { ...wait, nextIndex: nextWaitStep },
     game,
+    train,
+    trainSettings,
+    setTrainSettings,
     judgments,
     getBeat,
     registerPress,

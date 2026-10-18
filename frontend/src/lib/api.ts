@@ -5,6 +5,17 @@ export interface ChatMessage {
   content: string
 }
 
+export type ExerciseKind = 'five_finger' | 'scale' | 'arpeggio' | 'hanon' | 'chords' | 'blues'
+export type ScaleType = 'major' | 'natural minor' | 'harmonic minor'
+
+export interface ExerciseOptions {
+  kind: ExerciseKind
+  key: string
+  scale: ScaleType
+  hands: 'right' | 'left' | 'both'
+  octaves: 1 | 2
+}
+
 export interface GenerateOptions {
   title: string
   artist?: string
@@ -42,6 +53,8 @@ export const api = {
   },
 
   generateSong: (options: GenerateOptions) => request<Song>('/api/songs/generate', json(options)),
+
+  openExercise: (options: ExerciseOptions) => request<Song>('/api/exercises', json(options)),
 
   updateNotes: (id: number, notes: NoteEvent[]) =>
     request<Song>(`/api/songs/${id}/notes`, {

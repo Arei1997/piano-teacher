@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
 from src.database import Base, SessionLocal, engine
-from src.routers import chat, songs
+from src.routers import chat, exercises, songs
 from src.services.demo import seed_demo
 
 
@@ -26,6 +26,7 @@ app.add_middleware(
 )
 app.include_router(songs.router)
 app.include_router(chat.router)
+app.include_router(exercises.router)
 
 
 @app.get("/api/health")
