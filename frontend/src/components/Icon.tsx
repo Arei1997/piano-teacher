@@ -11,6 +11,10 @@ const PATHS = {
   up: <path d="M6 15l6-6 6 6" />,
   down: <path d="M6 9l6 6 6-6" />,
   trash: <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6" />,
+  restart: <path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5" />,
+  sliders: <path d="M4 7h10M18 7h2M4 17h4M12 17h8M14 4.5v5M8 14.5v5" />,
+  collapse: <path d="M6 14l6-6 6 6M6 19h12" />,
+  expand: <path d="M6 10l6 6 6-6M6 5h12" />,
 } as const
 
 export type IconName = keyof typeof PATHS

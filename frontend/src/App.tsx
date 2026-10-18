@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AddSongDialog } from './components/AddSongDialog'
 import { ChatPanel } from './components/ChatPanel'
 import type { View } from './components/Controls'
-import { Controls } from './components/Controls'
+import { ModeSwitch, OptionsPanel, Transport } from './components/Controls'
+import { Icon } from './components/Icon'
 import { GameHud, GameResults, MasteredDialog, TrainHud } from './components/GameHud'
 import { KeySize } from './components/KeySize'
 import { PracticePanel } from './components/PracticePanel'
-import type { KeyMark } from './components/Piano'
+import type { KeyLabels, KeyMark } from './components/Piano'
 import { Piano } from './components/Piano'
 import { SheetMusic } from './components/SheetMusic'
 import { SongLibrary } from './components/SongLibrary'
@@ -31,6 +32,9 @@ type Tab = 'sheet' | 'steps' | 'chat' | 'notes'
 const LAST_SONG_KEY = 'pianoteacher:lastSong'
 const THEME_KEY = 'pianoteacher:theme'
 const KEY_SIZE_KEY = 'pianoteacher:keySize'
+const OPTIONS_KEY = 'pianoteacher:options'
+const KEY_LABELS_KEY = 'pianoteacher:keyLabels'
+const COLLAPSED_KEY = 'pianoteacher:collapsed'
 
 // Per-device preferences; storage can be unavailable (private mode), so failures are ignored.
 function readSetting(key: string): string | null {
@@ -82,6 +86,25 @@ export default function App() {
   const setKeySize = (size: KeySizeSetting) => {
     setKeySizeState(size)
     writeSetting(KEY_SIZE_KEY, String(size))
+  }
+  const [keyLabels, setKeyLabelsState] = useState<KeyLabels>(() => {
+    const saved = readSetting(KEY_LABELS_KEY)
+    return saved === 'letters' || saved === 'none' ? saved : 'full'
+  })
+  const setKeyLabels = (labels: KeyLabels) => {
+    setKeyLabelsState(labels)
+    writeSetting(KEY_LABELS_KEY, labels)
+  }
+  // Layout preferences, remembered per device: the Options drawer and the collapsed top bar.
+  const [optionsOpen, setOptionsOpenState] = useState(() => readSetting(OPTIONS_KEY) === 'open')
+  const setOptionsOpen = (open: boolean) => {
+    setOptionsOpenState(open)
+    writeSetting(OPTIONS_KEY, open ? 'open' : 'closed')
+  }
+  const [collapsed, setCollapsedState] = useState(() => readSetting(COLLAPSED_KEY) === 'true')
+  const setCollapsed = (value: boolean) => {
+    setCollapsedState(value)
+    writeSetting(COLLAPSED_KEY, String(value))
   }
   const themed = Boolean(song) && view === 'falling'
 
@@ -216,67 +239,100 @@ export default function App() {
   const position = current ? { measure: current.measure, beat: current.beatInMeasure + 1 } : null
 
   return (
-    <div className="app" data-view={song ? view : 'sheet'}>
-      <header className="topbar">
-        <button onClick={() => setLibraryOpen(true)}>Songs</button>
-        <button onClick={() => setPracticeOpen(true)}>Practice</button>
-        <div className="song-title">
+    <div className="app" data-view={song ? view : 'sheet'} data-collapsed={collapsed && song ? 'true' : undefined}>
+      {/* Everything above the music. It slides away when collapsed ("just play"). */}
+      <div className="chrome">
+        <div className="chrome-inner" inert={collapsed && song ? true : undefined}>
+          <header className="topbar">
+            <div className="nav-buttons">
+              <button onClick={() => setLibraryOpen(true)}>Songs</button>
+              <button onClick={() => setPracticeOpen(true)}>Practice</button>
+            </div>
+            <div className="song-title">
+              {song ? (
+                <>
+                  <strong>{song.title}</strong>
+                  <span className="muted">
+                    {[song.artist, song.key, `${song.time_signature[0]}/${song.time_signature[1]}`].filter(Boolean).join(' · ')}
+                  </span>
+                </>
+              ) : (
+                <strong>Piano Teacher</strong>
+              )}
+            </div>
+            {song ? (
+              <>
+                <span className="row-break" />
+                <ModeSwitch player={player} setView={setView} />
+                <Transport player={player} />
+                <button
+                  className={`options-toggle${optionsOpen ? ' open' : ''}`}
+                  aria-expanded={optionsOpen}
+                  onClick={() => setOptionsOpen(!optionsOpen)}
+                >
+                  <Icon name="sliders" />
+                  <span>Options</span>
+                </button>
+              </>
+            ) : null}
+            <button className="primary add-song" onClick={() => setAdding(true)}>
+              + Add song
+            </button>
+            {song ? (
+              <button className="icon-button collapse-button" aria-label="Hide controls" title="Hide controls and just play" onClick={() => setCollapsed(true)}>
+                <Icon name="collapse" />
+              </button>
+            ) : null}
+          </header>
+
           {song ? (
-            <>
-              <strong>{song.title}</strong>
-              <span className="muted">
-                {[song.artist, song.key, `${song.time_signature[0]}/${song.time_signature[1]}`].filter(Boolean).join(' · ')}
-              </span>
-            </>
-          ) : (
-            <strong>Piano Teacher</strong>
-          )}
+            <div className={`options-drawer${optionsOpen ? ' open' : ''}`}>
+              <div className="options-drawer-inner" inert={optionsOpen ? undefined : true}>
+                <OptionsPanel
+                  player={player}
+                  keyLabels={keyLabels}
+                  setKeyLabels={setKeyLabels}
+                  view={view}
+                  setView={setView}
+                  themeId={themeId}
+                  setThemeId={setThemeId}
+                  baseTempo={song.tempo}
+                  midi={{ supported: input.midiSupported, devices: input.midiDevices, error: input.midiError, connect: input.connectMidi }}
+                  soundOnMidi={soundOnMidi}
+                  setSoundOnMidi={setSoundOnMidi}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <nav className="tabs main-tabs">
+            {(
+              [
+                ['sheet', 'Sheet'],
+                ['steps', 'Notes to play'],
+                ['chat', 'Teacher'],
+                ['notes', 'Tips'],
+              ] as [Tab, string][]
+            ).map(([id, label]) => (
+              // On desktop the sheet is always shown, so "Notes to play" is the panel next to it.
+              <button
+                key={id}
+                data-tab={id}
+                className={tab === id ? 'active' : tab === 'sheet' && id === 'steps' ? 'desktop-active' : ''}
+                onClick={() => setTab(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
         </div>
-        <button className="primary" onClick={() => setAdding(true)}>
-          + Add song
-        </button>
-      </header>
+      </div>
 
       {error ? (
         <p className="error banner" onClick={() => setError(null)}>
           {error}
         </p>
       ) : null}
-
-      {song ? (
-        <Controls
-          player={player}
-          view={view}
-          setView={setView}
-          themeId={themeId}
-          setThemeId={setThemeId}
-          baseTempo={song.tempo}
-          midi={{ supported: input.midiSupported, devices: input.midiDevices, error: input.midiError, connect: input.connectMidi }}
-          soundOnMidi={soundOnMidi}
-          setSoundOnMidi={setSoundOnMidi}
-        />
-      ) : null}
-
-      <nav className="tabs main-tabs">
-        {(
-          [
-            ['sheet', 'Sheet'],
-            ['steps', 'Notes to play'],
-            ['chat', 'Teacher'],
-            ['notes', 'Tips'],
-          ] as [Tab, string][]
-        ).map(([id, label]) => (
-          // On desktop the sheet is always shown, so "Notes to play" is the panel next to it.
-          <button
-            key={id}
-            data-tab={id}
-            className={tab === id ? 'active' : tab === 'sheet' && id === 'steps' ? 'desktop-active' : ''}
-            onClick={() => setTab(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
 
       <main className="workspace" data-tab={tab}>
         <section className="pane sheet-pane">
@@ -330,6 +386,14 @@ export default function App() {
       >
         <div className="keyboard-bar">
           {song ? <NowNext now={current} next={next} hands={hands} /> : <span />}
+          {song && collapsed ? (
+            <div className="mini-controls">
+              <Transport player={player} compact />
+              <button className="icon-button" aria-label="Show controls" title="Show controls" onClick={() => setCollapsed(false)}>
+                <Icon name="expand" />
+              </button>
+            </div>
+          ) : null}
           <KeySize setting={keySize} onChange={setKeySize} />
         </div>
         {song && (mode === 'game' || mode === 'train') ? <GameHud game={player.game} playing={player.playing} /> : null}
@@ -337,6 +401,7 @@ export default function App() {
         <Piano
           marks={marks}
           held={input.held}
+          labels={keyLabels}
           onPress={(m) => input.press(m, 0.75, 'screen')}
           onRelease={(m) => input.release(m, 'screen')}
           above={

@@ -17,7 +17,11 @@ interface PianoProps {
   onRelease: (midi: number) => void
   /** Drawn above the keys inside the same scroller, so it stays lined up with them (falling notes). */
   above?: ReactNode
+  labels?: KeyLabels
 }
+
+/** How resting keys are named: 'full' = D4 / C♯4 D♭4, 'letters' = D (octave only on C), 'none'. */
+export type KeyLabels = 'full' | 'letters' | 'none'
 
 const WHITE_LETTERS: Record<number, string> = { 0: 'C', 2: 'D', 4: 'E', 5: 'F', 7: 'G', 9: 'A', 11: 'B' }
 const BLACK_NAMES: Record<number, [string, string]> = {
@@ -28,26 +32,36 @@ const BLACK_NAMES: Record<number, [string, string]> = {
   10: ['A♯', 'B♭'],
 }
 
-/** Resting label: letter on white keys (octave shown on C), both spellings on black keys. */
-function restingLabel(midi: number) {
+/** Name for a key nobody needs to play right now. Black keys show both spellings. */
+function restingLabel(midi: number, labels: KeyLabels) {
+  if (labels === 'none') return null
   const pitchClass = midi % 12
+  const octave = Math.floor(midi / 12) - 1
+  const withOctave = labels === 'full' ? String(octave) : ''
   if (pitchClass in BLACK_NAMES) {
     const [sharp, flat] = BLACK_NAMES[pitchClass]
+    // Separate pieces so narrow keys can drop the octave and the flat spelling (see index.css).
     return (
       <>
-        <span>{sharp}</span>
-        <span>{flat}</span>
+        <span>
+          {sharp}
+          <i className="oct">{withOctave}</i>
+        </span>
+        <span className="alt">
+          {flat}
+          <i className="oct">{withOctave}</i>
+        </span>
       </>
     )
   }
-  return pitchClass === 0 ? `C${Math.floor(midi / 12) - 1}` : WHITE_LETTERS[pitchClass]
+  return pitchClass === 0 || labels === 'full' ? `${WHITE_LETTERS[pitchClass]}${octave}` : WHITE_LETTERS[pitchClass]
 }
 
 const ALL_KEYS = Array.from({ length: LAST_KEY - FIRST_KEY + 1 }, (_, i) => FIRST_KEY + i)
 const WHITE_KEYS = ALL_KEYS.filter((m) => !isBlackKey(m))
 const BLACK_KEYS = ALL_KEYS.filter(isBlackKey)
 
-export function Piano({ marks, held, onPress, onRelease, above }: PianoProps) {
+export function Piano({ marks, held, onPress, onRelease, above, labels = 'full' }: PianoProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pianoRef = useRef<HTMLDivElement>(null)
 
@@ -104,7 +118,7 @@ export function Piano({ marks, held, onPress, onRelease, above }: PianoProps) {
       >
         {mark?.kind === 'play' && mark.finger ? <span className="finger">{mark.finger}</span> : null}
         <span className={`key-name${scoreLabel ? ' score' : ''}${isC && !scoreLabel ? ' octave' : ''}`}>
-          {scoreLabel ?? restingLabel(midi)}
+          {scoreLabel ?? restingLabel(midi, labels)}
         </span>
       </div>
     )
